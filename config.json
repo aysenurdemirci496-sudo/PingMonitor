@@ -1,0 +1,7 @@
+{
+  "excel_file": "devices.xlsx",
+  "columns": {
+    "name": "name",
+    "ip": "ip"
+  }
+}
