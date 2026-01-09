@@ -1,227 +1,164 @@
 import tkinter as tk
 from tkinter import ttk, messagebox
-import subprocess
 import threading
+import subprocess
 import queue
-import json
-from datetime import datetime
+import platform
+import time
 
-from device_loader import load_devices, merge_devices_from_excel
+from device_loader import load_devices, update_last_ping
 
-
-# ======================
-# STATE
-# ======================
-devices = []
-current_device_index = None
+# ---------------- GLOBAL ----------------
 is_running = False
 ping_process = None
-ui_queue = queue.Queue()
+output_queue = queue.Queue()
+devices = []
 
 
-# ======================
-# PING THREAD
-# ======================
+# ---------------- PING ----------------
+def get_ping_command(ip):
+    if platform.system().lower() == "windows":
+        return ["ping", "-t", ip]
+    else:
+        return ["ping", ip]
+
+
 def ping_loop(ip):
-    global ping_process, is_running
+    global ping_process
 
-    ping_process = subprocess.Popen(
-        ["ping", ip],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1
-    )
-
-    for line in ping_process.stdout:
-        if not is_running:
-            break
-
-        ui_queue.put(line)
-
-        if ("Reply from" in line) or ("bytes from" in line):
-            if current_device_index is not None:
-                devices[current_device_index]["last_ping"] = (
-                    datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                )
-                with open("devices.json", "w", encoding="utf-8") as f:
-                    json.dump(devices, f, indent=2, ensure_ascii=False)
-
-                ui_queue.put("__REFRESH__")
-
-    ping_process.terminate()
-    ping_process = None
-
-
-# ======================
-# UI QUEUE
-# ======================
-def process_ui_queue():
     try:
-        while True:
-            item = ui_queue.get_nowait()
-            if item == "__REFRESH__":
-                refresh_device_list()
-            else:
-                output_box.insert(tk.END, item)
-                output_box.see(tk.END)
-    except queue.Empty:
-        pass
+        cmd = get_ping_command(ip)
 
-    root.after(30, process_ui_queue)
+        creationflags = 0
+        if platform.system().lower() == "windows":
+            creationflags = subprocess.CREATE_NO_WINDOW
+
+        ping_process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            creationflags=creationflags
+        )
+
+        for line in ping_process.stdout:
+            if not is_running:
+                break
+            output_queue.put(line)
+
+    except Exception as e:
+        output_queue.put(f"HATA: {e}\n")
 
 
-# ======================
-# TOGGLE BUTTON
-# ======================
+def stop_ping():
+    global ping_process
+    if ping_process:
+        try:
+            ping_process.terminate()
+        except Exception:
+            pass
+        ping_process = None
+
+
+# ---------------- UI CALLBACKS ----------------
 def toggle_ping():
-    global is_running, current_device_index
+    global is_running
+
+    ip = ip_entry.get().strip()
+    if not ip:
+        messagebox.showwarning("Uyarı", "IP adresi gir")
+        return
 
     if not is_running:
-        ip = ip_entry.get().strip()
-        if not ip:
-            messagebox.showerror("Hata", "IP boş")
-            return
-
-        if current_device_index is None:
-            for i, d in enumerate(devices):
-                if d["ip"] == ip:
-                    current_device_index = i
-                    break
-
-        if current_device_index is None:
-            messagebox.showerror("Hata", "IP listede yok")
-            return
-
         is_running = True
         start_button.config(text="Durdur")
-        threading.Thread(target=ping_loop, args=(ip,), daemon=True).start()
+        output_box.delete("1.0", tk.END)
+
+        threading.Thread(
+            target=ping_loop,
+            args=(ip,),
+            daemon=True
+        ).start()
+
+        update_last_ping(devices, ip)
+        refresh_device_list()
 
     else:
         is_running = False
+        stop_ping()
         start_button.config(text="Başlat")
 
 
-# ======================
-# DEVICE SELECT
-# ======================
-def on_device_select(event):
-    global current_device_index
+def process_output():
+    while not output_queue.empty():
+        line = output_queue.get()
+        output_box.insert(tk.END, line)
+        output_box.see(tk.END)
 
-    sel = device_tree.selection()
-    if not sel:
-        return
-
-    values = device_tree.item(sel[0], "values")
-    ip = values[1]
-
-    for i, d in enumerate(devices):
-        if d["ip"] == ip:
-            current_device_index = i
-            break
-
-    ip_entry.delete(0, tk.END)
-    ip_entry.insert(0, ip)
-
-    if is_running:
-        toggle_ping()
-        root.after(100, toggle_ping)
+    root.after(100, process_output)
 
 
-# ======================
-# REFRESH
-# ======================
-def refresh_from_excel():
-    global devices, current_device_index, is_running
-
-    if is_running:
-        is_running = False
-        start_button.config(text="Başlat")
-
-    devices = merge_devices_from_excel()
-    current_device_index = None
-    ip_entry.delete(0, tk.END)
-
-    for sel in device_tree.selection():
-        device_tree.selection_remove(sel)
-
-    refresh_device_list()
-    messagebox.showinfo("Bilgi", "Cihaz listesi güncellendi")
-
-
-# ======================
-# TREEVIEW
-# ======================
 def refresh_device_list():
     device_tree.delete(*device_tree.get_children())
     for d in devices:
-        device_tree.insert("", tk.END, values=(
-            d["name"],
-            d["ip"],
-            d["last_ping"] or "-"
-        ))
+        last = d["last_ping"] if d["last_ping"] else "-"
+        device_tree.insert("", tk.END, values=(d["name"], d["ip"], last))
 
 
-# ======================
-# UI
-# ======================
+def on_device_select(event):
+    selected = device_tree.selection()
+    if not selected:
+        return
+    item = device_tree.item(selected[0])
+    ip_entry.delete(0, tk.END)
+    ip_entry.insert(0, item["values"][1])
+
+
+# ---------------- UI ----------------
 root = tk.Tk()
 root.title("Ping Monitor")
-
-# Önce minimum boyut
-root.minsize(1000, 600)
-
-# Layout hesaplat
+root.minsize(1100, 650)
 root.update_idletasks()
-
-# Sonra kesin boyut ver
 root.geometry("1100x650")
 
 top = tk.Frame(root)
 top.pack(fill=tk.X, padx=10, pady=5)
 
 tk.Label(top, text="IP:").pack(side=tk.LEFT)
-ip_entry = tk.Entry(top, width=20)
+ip_entry = tk.Entry(top, width=25)
 ip_entry.pack(side=tk.LEFT, padx=5)
 
 start_button = tk.Button(top, text="Başlat", width=10, command=toggle_ping)
 start_button.pack(side=tk.LEFT, padx=5)
 
-tk.Button(top, text="Yenile", command=refresh_from_excel).pack(side=tk.LEFT, padx=5)
+refresh_button = tk.Button(top, text="Yenile", width=10)
+refresh_button.pack(side=tk.LEFT, padx=5)
 
-middle = tk.Frame(root)
-middle.pack(fill=tk.BOTH, expand=True, padx=10)
+main = tk.PanedWindow(root, sashrelief=tk.RAISED)
+main.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-output_box = tk.Text(middle)
-output_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+# Output
+output_box = tk.Text(main)
+main.add(output_box)
 
-right = tk.Frame(middle, width=450)
-right.pack(side=tk.RIGHT, fill=tk.Y)
-right.pack_propagate(False)
+# Devices
+right = tk.Frame(main)
+main.add(right)
 
-tk.Label(right, text="Cihazlar").pack()
+tk.Label(right, text="Cihazlar").pack(anchor="w")
 
-device_tree = ttk.Treeview(
-    right,
-    columns=("name", "ip", "last_ping"),
-    show="headings"
-)
-device_tree.heading("name", text="Cihaz")
-device_tree.heading("ip", text="IP")
-device_tree.heading("last_ping", text="Son Ping")
-
-device_tree.column("name", width=120)
-device_tree.column("ip", width=110)
-device_tree.column("last_ping", width=200)
+cols = ("Cihaz", "IP", "Son Ping")
+device_tree = ttk.Treeview(right, columns=cols, show="headings", height=25)
+for c in cols:
+    device_tree.heading(c, text=c)
+    device_tree.column(c, width=180 if c != "Son Ping" else 220)
 
 device_tree.pack(fill=tk.BOTH, expand=True)
 device_tree.bind("<<TreeviewSelect>>", on_device_select)
 
-
-# ======================
-# START
-# ======================
+# ---------------- INIT ----------------
 devices = load_devices()
 refresh_device_list()
-process_ui_queue()
+root.after(100, process_output)
+
 root.mainloop()

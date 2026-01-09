@@ -1,69 +1,50 @@
 import json
 import os
+from datetime import datetime
 from openpyxl import load_workbook
 
+DEVICES_JSON = "devices.json"
+DEVICES_XLSX = "devices.xlsx"
 
-def load_devices(config_path="config.json"):
-    if os.path.exists("devices.json"):
+
+def load_devices():
+    # JSON varsa ve doluysa oradan oku
+    if os.path.exists(DEVICES_JSON) and os.path.getsize(DEVICES_JSON) > 0:
         try:
-            with open("devices.json", "r", encoding="utf-8") as f:
+            with open(DEVICES_JSON, "r", encoding="utf-8") as f:
                 data = json.load(f)
                 if isinstance(data, list):
                     return data
-        except (json.JSONDecodeError, OSError):
-            pass  # bozuk dosya → yeniden üret
+        except Exception:
+            pass  # bozuksa Excel'e düş
 
-    return _load_from_excel_and_create_json(config_path)
-
-
-def merge_devices_from_excel(config_path="config.json"):
-    old_devices = load_devices(config_path)
-    old_map = {d["ip"]: d for d in old_devices}
-
-    new_devices = _load_from_excel_raw(config_path)
-
-    merged = []
-    for d in new_devices:
-        if d["ip"] in old_map:
-            merged.append(old_map[d["ip"]])  # last_ping korunur
-        else:
-            merged.append(d)
-
-    with open("devices.json", "w", encoding="utf-8") as f:
-        json.dump(merged, f, indent=2, ensure_ascii=False)
-
-    return merged
-
-
-# ---------- helpers ----------
-
-def _load_from_excel_and_create_json(config_path):
-    devices = _load_from_excel_raw(config_path)
-    with open("devices.json", "w", encoding="utf-8") as f:
-        json.dump(devices, f, indent=2, ensure_ascii=False)
-    return devices
-
-
-def _load_from_excel_raw(config_path):
-    with open(config_path, "r", encoding="utf-8") as f:
-        config = json.load(f)
-
-    wb = load_workbook(config["excel_file"])
-    sheet = wb.active
-
-    headers = {cell.value: i for i, cell in enumerate(sheet[1])}
-    name_col = config["columns"]["name"]
-    ip_col = config["columns"]["ip"]
-
+    # Excel'den oku
     devices = []
-    for row in sheet.iter_rows(min_row=2, values_only=True):
-        name = row[headers[name_col]]
-        ip = row[headers[ip_col]]
-        if name and ip:
-            devices.append({
-                "name": str(name),
-                "ip": str(ip),
-                "last_ping": None
-            })
+    if os.path.exists(DEVICES_XLSX):
+        wb = load_workbook(DEVICES_XLSX)
+        ws = wb.active
 
+        for row in ws.iter_rows(min_row=2, values_only=True):
+            name, ip = row[:2]
+            if name and ip:
+                devices.append({
+                    "name": str(name),
+                    "ip": str(ip),
+                    "last_ping": None
+                })
+
+    save_devices(devices)
     return devices
+
+
+def save_devices(devices):
+    with open(DEVICES_JSON, "w", encoding="utf-8") as f:
+        json.dump(devices, f, indent=2, ensure_ascii=False)
+
+
+def update_last_ping(devices, ip):
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for d in devices:
+        if d["ip"] == ip:
+            d["last_ping"] = now
+    save_devices(devices)
