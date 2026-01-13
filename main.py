@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 import subprocess
 import threading
 import queue
@@ -9,6 +9,10 @@ from datetime import datetime
 
 from device_loader import load_devices, load_devices_from_excel, save_devices
 
+# ---------------- PLATFORM ----------------
+IS_WINDOWS = platform.system().lower() == "windows"
+FONT_NAME = "Segoe UI" if IS_WINDOWS else "Helvetica"
+
 # ---------------- GLOBAL STATE ----------------
 devices = []
 current_ip = None
@@ -16,7 +20,7 @@ is_running = False
 ping_process = None
 ping_thread = None
 ui_queue = queue.Queue()
-selected_index = 0   # 🔴 OK TUŞLARI İÇİN KRİTİK
+selected_index = 0   # OK tuşları için
 
 # ---------------- PING HELPERS ----------------
 def extract_ping_ms(text):
@@ -37,15 +41,13 @@ def status_by_latency(ms):
 
 
 def ping_command(ip):
-    if platform.system().lower() == "windows":
-        return ["ping", "-t", ip]
-    return ["ping", ip]
+    return ["ping", "-t", ip] if IS_WINDOWS else ["ping", ip]
 
 # ---------------- PING LOOP ----------------
 def ping_loop(ip):
     global ping_process
 
-    flags = subprocess.CREATE_NO_WINDOW if platform.system().lower() == "windows" else 0
+    flags = subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0
 
     ping_process = subprocess.Popen(
         ping_command(ip),
@@ -98,7 +100,7 @@ def start_ping(event=None):
     if not ip:
         return
 
-    stop_ping()  # 🔴 ESKİ PING %100 KAPAT
+    stop_ping()
 
     is_running = True
     current_ip = ip
@@ -111,11 +113,7 @@ def start_ping(event=None):
     while not ui_queue.empty():
         ui_queue.get_nowait()
 
-    ping_thread = threading.Thread(
-        target=ping_loop,
-        args=(ip,),
-        daemon=True
-    )
+    ping_thread = threading.Thread(target=ping_loop, args=(ip,), daemon=True)
     ping_thread.start()
 
 
@@ -202,8 +200,11 @@ def on_single_click(event):
 
 def on_double_click(event):
     write_ip_from_selection()
-    start_ping()
+    device_tree.focus_set()
 
+    # 🔒 Event zinciri bitsin, sonra ping başlasın
+    root.after(120, start_ping)
+    
 def on_arrow_key(event):
     global selected_index
 
@@ -223,17 +224,54 @@ def on_arrow_key(event):
     write_ip_from_selection()
     return "break"
 
+# ---------------- CONTEXT MENU ----------------
+def copy_selected_ip():
+    sel = device_tree.selection()
+    if not sel:
+        return
+    ip = device_tree.item(sel[0])["values"][1]
+    root.clipboard_clear()
+    root.clipboard_append(ip)
+
+def show_context_menu(event):
+    global selected_index
+
+    if hasattr(event, "y"):
+        row_id = device_tree.identify_row(event.y)
+    else:
+        sel = device_tree.selection()
+        row_id = sel[0] if sel else None
+
+    if not row_id:
+        return
+
+    items = device_tree.get_children()
+    selected_index = items.index(row_id)
+
+    device_tree.selection_set(row_id)
+    device_tree.focus(row_id)
+    write_ip_from_selection()
+
+    x = event.x_root if hasattr(event, "x_root") else root.winfo_pointerx()
+    y = event.y_root if hasattr(event, "y_root") else root.winfo_pointery()
+    context_menu.tk_popup(x, y)
+
 # ---------------- UI ----------------
 root = tk.Tk()
 root.title("Ping Monitor")
 root.geometry("1100x650")
 root.minsize(1100, 650)
 
+# 🔑 PLATFORM FONT STYLE (SADECE EKLENEN KISIM)
+style = ttk.Style(root)
+style.configure("Treeview", font=(FONT_NAME, 14), rowheight=36)
+style.configure("Treeview.Heading", font=(FONT_NAME, 15, "bold"))
+
 top = tk.Frame(root)
 top.pack(fill=tk.X, padx=10, pady=5)
 
-tk.Label(top, text="IP:").pack(side=tk.LEFT)
-ip_entry = tk.Entry(top, width=25)
+tk.Label(top, text="IP:", font=(FONT_NAME, 11)).pack(side=tk.LEFT)
+ip_entry = tk.Entry(top, width=25, font=(FONT_NAME, 11))
 ip_entry.pack(side=tk.LEFT, padx=5)
 
 start_btn = tk.Button(top, text="Başlat", width=10, command=toggle_ping)
@@ -244,7 +282,7 @@ tk.Button(top, text="Yenile", width=10, command=refresh_from_excel).pack(side=tk
 main = tk.PanedWindow(root, orient=tk.HORIZONTAL)
 main.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-output_box = tk.Text(main, state=tk.DISABLED)
+output_box = tk.Text(main, state=tk.DISABLED, font=(FONT_NAME, 11))
 main.add(output_box)
 
 right = tk.Frame(main)
@@ -255,32 +293,42 @@ device_tree = ttk.Treeview(right, columns=cols, show="headings")
 
 for c in cols:
     device_tree.heading(c, text=c)
-    device_tree.column(c, width=150 if c != "Son Ping" else 200)
+    device_tree.column(c, width=160 if c != "Son Ping" else 220)
 
 device_tree.pack(fill=tk.BOTH, expand=True)
 
 # BINDINGS
 device_tree.bind("<<TreeviewSelect>>", on_single_click)
 device_tree.bind("<Double-1>", on_double_click)
-
-# 🔴 Treeview'in kendi ok davranışını iptal et
 device_tree.bind("<Up>", lambda e: "break")
 device_tree.bind("<Down>", lambda e: "break")
 
-# 🔑 Ok tuşları root’tan yönetiliyor
+device_tree.bind("<Button-3>", show_context_menu)
+device_tree.bind("<Button-2>", show_context_menu)
+device_tree.bind("<Control-Button-1>", show_context_menu)
+root.bind("<Shift-F10>", show_context_menu)
+
 root.bind("<Up>", on_arrow_key)
 root.bind("<Down>", on_arrow_key)
-
 root.bind("<Return>", start_ping)
 root.bind("<Escape>", stop_ping)
 
-# RENKLER (Windows uyumlu)
+# RENKLER
 device_tree.tag_configure("UNKNOWN", foreground="#7f8c8d")
 device_tree.tag_configure("FAST", foreground="#1e8449")
 device_tree.tag_configure("NORMAL", foreground="#27ae60")
 device_tree.tag_configure("SLOW", foreground="#b7950b")
 device_tree.tag_configure("VERY_SLOW", foreground="#ca6f1e")
 device_tree.tag_configure("DOWN", foreground="#c0392b")
+
+# CONTEXT MENU
+context_menu = tk.Menu(root, tearoff=0)
+context_menu.add_command(label="▶ Ping Başlat", command=start_ping)
+context_menu.add_command(label="⏹ Ping Durdur", command=stop_ping)
+context_menu.add_separator()
+context_menu.add_command(label="📋 IP Kopyala", command=copy_selected_ip)
+context_menu.add_separator()
+context_menu.add_command(label="🔄 Excel'den Yenile", command=refresh_from_excel)
 
 # ---------------- START ----------------
 devices = load_devices()
