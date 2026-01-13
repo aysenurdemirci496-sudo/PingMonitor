@@ -14,7 +14,9 @@ devices = []
 current_ip = None
 is_running = False
 ping_process = None
+ping_thread = None
 ui_queue = queue.Queue()
+selected_index = 0   # 🔴 OK TUŞLARI İÇİN KRİTİK
 
 # ---------------- PING HELPERS ----------------
 def extract_ping_ms(text):
@@ -35,7 +37,9 @@ def status_by_latency(ms):
 
 
 def ping_command(ip):
-    return ["ping", "-t", ip] if platform.system().lower() == "windows" else ["ping", ip]
+    if platform.system().lower() == "windows":
+        return ["ping", "-t", ip]
+    return ["ping", ip]
 
 # ---------------- PING LOOP ----------------
 def ping_loop(ip):
@@ -66,7 +70,6 @@ def process_ui_queue():
     while not ui_queue.empty():
         line = ui_queue.get()
 
-        # TEXT BOX AÇ → YAZ → KİLİTLE
         output_box.config(state=tk.NORMAL)
         output_box.insert(tk.END, line)
         output_box.see(tk.END)
@@ -77,23 +80,25 @@ def process_ui_queue():
 
         for d in devices:
             if d["ip"] == current_ip:
-                d["last_ping"] = now
                 d["latency"] = ms
+                d["last_ping"] = now
                 d["status"] = status_by_latency(ms)
                 break
 
         save_devices(devices)
-        refresh_device_list()
+        refresh_device_list(keep_selection=True)
 
     root.after(100, process_ui_queue)
 
 # ---------------- ACTIONS ----------------
 def start_ping(event=None):
-    global is_running, current_ip
+    global is_running, current_ip, ping_thread
 
     ip = ip_entry.get().strip()
-    if not ip or is_running:
+    if not ip:
         return
+
+    stop_ping()  # 🔴 ESKİ PING %100 KAPAT
 
     is_running = True
     current_ip = ip
@@ -103,16 +108,29 @@ def start_ping(event=None):
     output_box.delete("1.0", tk.END)
     output_box.config(state=tk.DISABLED)
 
-    threading.Thread(target=ping_loop, args=(ip,), daemon=True).start()
+    while not ui_queue.empty():
+        ui_queue.get_nowait()
+
+    ping_thread = threading.Thread(
+        target=ping_loop,
+        args=(ip,),
+        daemon=True
+    )
+    ping_thread.start()
 
 
 def stop_ping(event=None):
-    global is_running
+    global is_running, ping_process
+
     is_running = False
     start_btn.config(text="Başlat")
 
-    # OK TUŞLARI KAYBOLMASIN
-    device_tree.focus_set()
+    if ping_process:
+        try:
+            ping_process.terminate()
+        except Exception:
+            pass
+        ping_process = None
 
 
 def toggle_ping():
@@ -135,42 +153,42 @@ def refresh_from_excel():
             merged.append({
                 "name": ex["name"],
                 "ip": ex["ip"],
-                "last_ping": None,
                 "latency": None,
+                "last_ping": None,
                 "status": "UNKNOWN"
             })
 
     devices = merged
     save_devices(devices)
-    refresh_device_list()
+    refresh_device_list(keep_selection=True)
 
 # ---------------- DEVICE LIST ----------------
-def refresh_device_list():
+def refresh_device_list(keep_selection=False):
+    global selected_index
+
+    items = device_tree.get_children()
+    if keep_selection and items:
+        sel = device_tree.selection()
+        if sel:
+            selected_index = items.index(sel[0])
+
     device_tree.delete(*device_tree.get_children())
 
     for d in devices:
-        d.setdefault("status", "UNKNOWN")
-        d.setdefault("latency", None)
-        d.setdefault("last_ping", None)
-
-        latency_txt = "-" if d["latency"] is None else f"{d['latency']:.1f}"
-
+        latency_txt = "-" if d.get("latency") is None else f"{d['latency']:.1f}"
         device_tree.insert(
             "",
             tk.END,
-            values=(d["name"], d["ip"], latency_txt, d["last_ping"] or "-"),
-            tags=(d["status"],)
+            values=(d["name"], d["ip"], latency_txt, d.get("last_ping") or "-"),
+            tags=(d.get("status", "UNKNOWN"),)
         )
 
-    # 🔴 KRİTİK: OK TUŞLARI İÇİN
-    children = device_tree.get_children()
-    if children:
-        if not device_tree.selection():
-            device_tree.selection_set(children[0])
-        device_tree.focus(children[0])
-        device_tree.focus_set()
+    items = device_tree.get_children()
+    if items:
+        selected_index = min(selected_index, len(items) - 1)
+        device_tree.selection_set(items[selected_index])
+        device_tree.focus(items[selected_index])
         write_ip_from_selection()
-
 
 def write_ip_from_selection():
     sel = device_tree.selection()
@@ -179,33 +197,29 @@ def write_ip_from_selection():
     ip_entry.delete(0, tk.END)
     ip_entry.insert(0, device_tree.item(sel[0])["values"][1])
 
-
 def on_single_click(event):
     write_ip_from_selection()
-
 
 def on_double_click(event):
     write_ip_from_selection()
     start_ping()
 
-
 def on_arrow_key(event):
+    global selected_index
+
     items = device_tree.get_children()
     if not items:
         return "break"
 
-    selected = device_tree.selection()
-    index = items.index(selected[0]) if selected else 0
-
-    if event.keysym == "Down" and index < len(items) - 1:
-        index += 1
-    elif event.keysym == "Up" and index > 0:
-        index -= 1
+    if event.keysym == "Down" and selected_index < len(items) - 1:
+        selected_index += 1
+    elif event.keysym == "Up" and selected_index > 0:
+        selected_index -= 1
     else:
         return "break"
 
-    device_tree.selection_set(items[index])
-    device_tree.focus(items[index])
+    device_tree.selection_set(items[selected_index])
+    device_tree.focus(items[selected_index])
     write_ip_from_selection()
     return "break"
 
@@ -230,11 +244,9 @@ tk.Button(top, text="Yenile", width=10, command=refresh_from_excel).pack(side=tk
 main = tk.PanedWindow(root, orient=tk.HORIZONTAL)
 main.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-# SOL (READ-ONLY OUTPUT)
 output_box = tk.Text(main, state=tk.DISABLED)
 main.add(output_box)
 
-# SAĞ (DEVICES)
 right = tk.Frame(main)
 main.add(right)
 
@@ -250,19 +262,25 @@ device_tree.pack(fill=tk.BOTH, expand=True)
 # BINDINGS
 device_tree.bind("<<TreeviewSelect>>", on_single_click)
 device_tree.bind("<Double-1>", on_double_click)
-device_tree.bind("<Up>", on_arrow_key)
-device_tree.bind("<Down>", on_arrow_key)
+
+# 🔴 Treeview'in kendi ok davranışını iptal et
+device_tree.bind("<Up>", lambda e: "break")
+device_tree.bind("<Down>", lambda e: "break")
+
+# 🔑 Ok tuşları root’tan yönetiliyor
+root.bind("<Up>", on_arrow_key)
+root.bind("<Down>", on_arrow_key)
 
 root.bind("<Return>", start_ping)
 root.bind("<Escape>", stop_ping)
 
-# RENKLER
-device_tree.tag_configure("UNKNOWN", background="#e0e0e0")
-device_tree.tag_configure("FAST", background="#2ecc71")
-device_tree.tag_configure("NORMAL", background="#a9dfbf")
-device_tree.tag_configure("SLOW", background="#f9e79f")
-device_tree.tag_configure("VERY_SLOW", background="#f5b041")
-device_tree.tag_configure("DOWN", background="#f1948a")
+# RENKLER (Windows uyumlu)
+device_tree.tag_configure("UNKNOWN", foreground="#7f8c8d")
+device_tree.tag_configure("FAST", foreground="#1e8449")
+device_tree.tag_configure("NORMAL", foreground="#27ae60")
+device_tree.tag_configure("SLOW", foreground="#b7950b")
+device_tree.tag_configure("VERY_SLOW", foreground="#ca6f1e")
+device_tree.tag_configure("DOWN", foreground="#c0392b")
 
 # ---------------- START ----------------
 devices = load_devices()
