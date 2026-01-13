@@ -6,6 +6,7 @@ import queue
 import platform
 import re
 from datetime import datetime
+from tkinter import messagebox
 
 from device_loader import load_devices, load_devices_from_excel, save_devices
 
@@ -26,6 +27,14 @@ selected_index = 0   # OK tuşları için
 def extract_ping_ms(text):
     match = re.search(r"time[=<]?\s*([\d\.]+)\s*ms", text.lower())
     return float(match.group(1)) if match else None
+
+def ip_exists(ip, exclude_device=None):
+    for d in devices:
+        if d["ip"] == ip:
+            if exclude_device and d is exclude_device:
+                continue
+            return True
+    return False
 
 
 def status_by_latency(ms):
@@ -130,6 +139,16 @@ def stop_ping(event=None):
             pass
         ping_process = None
 
+    # 🔴 TREEVIEW GERİ ODAK
+    device_tree.focus_set()
+
+    # 🔴 KALDIĞI SATIRI KORU
+    items = device_tree.get_children()
+    if items:
+        device_tree.selection_set(items[selected_index])
+        device_tree.focus(items[selected_index])
+        device_tree.see(items[selected_index])  # 👈 scroll
+
 
 def toggle_ping():
     if is_running:
@@ -142,15 +161,21 @@ def refresh_from_excel():
     global devices
     excel_devices = load_devices_from_excel()
     merged = []
+    seen_ips = set()
 
     for ex in excel_devices:
+        if ex["ip"] in seen_ips:
+            messagebox.showwarning("Uyarı", "Bu IP adresi zaten mevcut!")
+            continue
+
+        seen_ips.add(ex["ip"])
+
         old = next((d for d in devices if d["ip"] == ex["ip"]), None)
         if old:
             merged.append(old)
         else:
             merged.append({
-                "name": ex["name"],
-                "ip": ex["ip"],
+                **ex,
                 "latency": None,
                 "last_ping": None,
                 "status": "UNKNOWN"
@@ -186,6 +211,7 @@ def refresh_device_list(keep_selection=False):
         selected_index = min(selected_index, len(items) - 1)
         device_tree.selection_set(items[selected_index])
         device_tree.focus(items[selected_index])
+        device_tree.see(items[selected_index])
         write_ip_from_selection()
 
 def write_ip_from_selection():
@@ -200,11 +226,20 @@ def on_single_click(event):
 
 def on_double_click(event):
     write_ip_from_selection()
+
+    # 🔴 Treeview focus'u SABİTLE
     device_tree.focus_set()
 
-    # 🔒 Event zinciri bitsin, sonra ping başlasın
-    root.after(120, start_ping)
-    
+    # 🔴 selection index’i koru
+    global selected_index
+    items = device_tree.get_children()
+    sel = device_tree.selection()
+    if sel:
+        selected_index = items.index(sel[0])
+
+    # 🔴 Ping'i gecikmeli başlat (UI zinciri bitsin)
+    root.after(150, start_ping)
+
 def on_arrow_key(event):
     global selected_index
 
@@ -221,10 +256,89 @@ def on_arrow_key(event):
 
     device_tree.selection_set(items[selected_index])
     device_tree.focus(items[selected_index])
+    device_tree.see(items[selected_index])  # 🔴 SCROLL
     write_ip_from_selection()
     return "break"
 
 # ---------------- CONTEXT MENU ----------------
+def show_device_details():
+    sel = device_tree.selection()
+    if not sel:
+        return
+
+    item = device_tree.item(sel[0])
+    ip = item["values"][1]
+
+    device = next((d for d in devices if d["ip"] == ip), None)
+    if not device:
+        return
+
+    win = tk.Toplevel(root)
+    win.title("Cihaz Detayları")
+    win.resizable(False, False)
+    win.grab_set()  # modal pencere
+
+    fields = [
+        ("Device Name", device.get("name"), True),
+        ("IP Address", device.get("ip"), True),
+        ("Device", device.get("device"), True),
+        ("Model", device.get("model"), True),
+        ("MAC", device.get("mac"), True),
+        ("Location", device.get("location"), True),
+        ("Unit", device.get("unit"), True),
+        ("Description", device.get("description"), True),
+    ]
+
+    entries = {}
+
+    for i, (label, value, editable) in enumerate(fields):
+        tk.Label(win, text=label).grid(row=i, column=0, sticky="w", padx=10, pady=4)
+
+        ent = tk.Entry(win, width=40)
+        ent.grid(row=i, column=1, padx=10, pady=4)
+        ent.insert(0, value if value else "")
+
+        if not editable:
+            ent.config(state="disabled")
+
+        entries[label] = ent
+    def save_changes():
+        new_ip = entries["IP Address"].get().strip()
+
+        if not new_ip:
+            tk.messagebox.showwarning("Hata", "IP Address boş olamaz")
+            return
+
+        if ip_exists(new_ip, exclude_device=device):
+            tk.messagebox.showwarning(
+                "IP Çakışması",
+                f"Bu IP zaten başka bir cihaza ait:\n{new_ip}"
+            )
+            return
+
+        old_ip = device["ip"]
+
+        device["name"] = entries["Device Name"].get()
+        device["ip"] = new_ip
+        device["device"] = entries["Device"].get()
+        device["model"] = entries["Model"].get()
+        device["mac"] = entries["MAC"].get()
+        device["location"] = entries["Location"].get()
+        device["unit"] = entries["Unit"].get()
+        device["description"] = entries["Description"].get()
+
+        from device_loader import update_device_in_excel
+        update_device_in_excel(old_ip, device)
+
+        save_devices(devices)
+        refresh_from_excel()
+        win.destroy()
+
+    btns = tk.Frame(win)
+    btns.grid(row=len(fields), column=0, columnspan=2, pady=10)
+
+    tk.Button(btns, text="Kaydet", width=12, command=save_changes).pack(side=tk.LEFT, padx=5)
+    tk.Button(btns, text="İptal", width=12, command=win.destroy).pack(side=tk.LEFT, padx=5)
 def copy_selected_ip():
     sel = device_tree.selection()
     if not sel:
@@ -325,6 +439,11 @@ device_tree.tag_configure("DOWN", foreground="#c0392b")
 context_menu = tk.Menu(root, tearoff=0)
 context_menu.add_command(label="▶ Ping Başlat", command=start_ping)
 context_menu.add_command(label="⏹ Ping Durdur", command=stop_ping)
+context_menu.add_separator()
+
+# 🔴 YENİ EKLENEN
+context_menu.add_command(label="📝 Cihaz Detayları", command=show_device_details)
+
 context_menu.add_separator()
 context_menu.add_command(label="📋 IP Kopyala", command=copy_selected_ip)
 context_menu.add_separator()
