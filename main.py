@@ -21,7 +21,8 @@ is_running = False
 ping_process = None
 ping_thread = None
 ui_queue = queue.Queue()
-selected_index = 0   # OK tuşları için
+started_from_entry = False
+
 
 # ---------------- PING HELPERS ----------------
 def extract_ping_ms(text):
@@ -97,17 +98,23 @@ def process_ui_queue():
                 break
 
         save_devices(devices)
-        refresh_device_list(keep_selection=True)
+
+        # 🔴 Ping çalışıyorsa treeview refresh YAPMA
+        if not is_running:
+            refresh_device_list(keep_selection=True)
 
     root.after(100, process_ui_queue)
 
 # ---------------- ACTIONS ----------------
 def start_ping(event=None):
-    global is_running, current_ip, ping_thread
+    global is_running, current_ip, ping_thread, started_from_entry
 
     ip = ip_entry.get().strip()
     if not ip:
         return
+
+    # 🔴 BU SATIR KRİTİK
+    started_from_entry = True
 
     stop_ping()
 
@@ -125,12 +132,18 @@ def start_ping(event=None):
     ping_thread = threading.Thread(target=ping_loop, args=(ip,), daemon=True)
     ping_thread.start()
 
+def start_ping_from_menu():
+    global started_from_entry
+    started_from_entry = False
+    start_ping()
 
 def stop_ping(event=None):
     global is_running, ping_process
 
     is_running = False
     start_btn.config(text="Başlat")
+        # Ping durdu, artık entry'yi otomatik doldurabiliriz
+    global started_from_entry
 
     if ping_process:
         try:
@@ -138,16 +151,6 @@ def stop_ping(event=None):
         except Exception:
             pass
         ping_process = None
-
-    # 🔴 TREEVIEW GERİ ODAK
-    device_tree.focus_set()
-
-    # 🔴 KALDIĞI SATIRI KORU
-    items = device_tree.get_children()
-    if items:
-        device_tree.selection_set(items[selected_index])
-        device_tree.focus(items[selected_index])
-        device_tree.see(items[selected_index])  # 👈 scroll
 
 
 def toggle_ping():
@@ -159,17 +162,11 @@ def toggle_ping():
 
 def refresh_from_excel():
     global devices
+
     excel_devices = load_devices_from_excel()
     merged = []
-    seen_ips = set()
 
     for ex in excel_devices:
-        if ex["ip"] in seen_ips:
-            messagebox.showwarning("Uyarı", "Bu IP adresi zaten mevcut!")
-            continue
-
-        seen_ips.add(ex["ip"])
-
         old = next((d for d in devices if d["ip"] == ex["ip"]), None)
         if old:
             merged.append(old)
@@ -186,14 +183,35 @@ def refresh_from_excel():
     refresh_device_list(keep_selection=True)
 
 # ---------------- DEVICE LIST ----------------
-def refresh_device_list(keep_selection=False):
-    global selected_index
-
+    
+def move_selection(direction):
     items = device_tree.get_children()
-    if keep_selection and items:
+    if not items:
+        return
+
+    sel = device_tree.selection()
+    if sel:
+        index = items.index(sel[0])
+    else:
+        index = 0
+
+    new_index = index + direction
+
+    if new_index < 0 or new_index >= len(items):
+        return
+
+    device_tree.selection_set(items[new_index])
+    device_tree.focus(items[new_index])
+    device_tree.see(items[new_index])
+    write_ip_from_selection()
+
+def refresh_device_list(keep_selection=False):
+    # mevcut seçimi hatırla
+    selected_ip = None
+    if keep_selection:
         sel = device_tree.selection()
         if sel:
-            selected_index = items.index(sel[0])
+            selected_ip = device_tree.item(sel[0])["values"][1]
 
     device_tree.delete(*device_tree.get_children())
 
@@ -206,61 +224,155 @@ def refresh_device_list(keep_selection=False):
             tags=(d.get("status", "UNKNOWN"),)
         )
 
+    # aynı IP varsa onu tekrar seç
+    if selected_ip:
+        for item in device_tree.get_children():
+            if device_tree.item(item)["values"][1] == selected_ip:
+                device_tree.selection_set(item)
+                device_tree.focus(item)
+                device_tree.see(item)
+                write_ip_from_selection()
+                return
+
+    # yoksa ilk satırı seç
     items = device_tree.get_children()
     if items:
-        selected_index = min(selected_index, len(items) - 1)
-        device_tree.selection_set(items[selected_index])
-        device_tree.focus(items[selected_index])
-        device_tree.see(items[selected_index])
+        device_tree.selection_set(items[0])
+        device_tree.focus(items[0])
+        device_tree.see(items[0])
         write_ip_from_selection()
 
+
 def write_ip_from_selection():
+    global started_from_entry
+
+    if started_from_entry:
+        return
+
     sel = device_tree.selection()
     if not sel:
         return
+
     ip_entry.delete(0, tk.END)
     ip_entry.insert(0, device_tree.item(sel[0])["values"][1])
 
-def on_single_click(event):
+def on_tree_select(event=None):
+    global started_from_entry
+    started_from_entry = False   # 👈 kilidi burada açıyoruz
     write_ip_from_selection()
 
 def on_double_click(event):
+    global started_from_entry
+    row_id = device_tree.identify_row(event.y)
+    if not row_id:
+        return
+
+    device_tree.selection_set(row_id)
+    device_tree.focus(row_id)
     write_ip_from_selection()
+    started_from_entry = False
 
-    # 🔴 Treeview focus'u SABİTLE
-    device_tree.focus_set()
+    root.after(50, start_ping)
 
-    # 🔴 selection index’i koru
-    global selected_index
-    items = device_tree.get_children()
-    sel = device_tree.selection()
-    if sel:
-        selected_index = items.index(sel[0])
+def move_focus_horizontal(direction):
+    current = root.focus_get()
 
-    # 🔴 Ping'i gecikmeli başlat (UI zinciri bitsin)
-    root.after(150, start_ping)
+    if current not in top_controls:
+        top_controls[0].focus_set()
+        return
 
-def on_arrow_key(event):
-    global selected_index
+    index = top_controls.index(current)
+    new_index = index + direction
 
-    items = device_tree.get_children()
-    if not items:
-        return "break"
+    if 0 <= new_index < len(top_controls):
+        top_controls[new_index].focus_set()
 
-    if event.keysym == "Down" and selected_index < len(items) - 1:
-        selected_index += 1
-    elif event.keysym == "Up" and selected_index > 0:
-        selected_index -= 1
-    else:
-        return "break"
 
-    device_tree.selection_set(items[selected_index])
-    device_tree.focus(items[selected_index])
-    device_tree.see(items[selected_index])  # 🔴 SCROLL
-    write_ip_from_selection()
-    return "break"
 
 # ---------------- CONTEXT MENU ----------------
+def open_add_device_window():
+    ip = ip_entry.get().strip()
+
+    if not ip:
+        messagebox.showwarning("Uyarı", "Önce IP adresi giriniz")
+        return
+
+    if ip_exists(ip):
+        messagebox.showwarning("IP Çakışması", f"Bu IP zaten kayıtlı:\n{ip}")
+        return
+
+    win = tk.Toplevel(root)
+    win.title("Yeni Cihaz Ekle")
+    win.resizable(False, False)
+    win.grab_set()
+
+    fields = [
+        ("Device Name", ""),
+        ("IP Address", ip),
+        ("Device", ""),
+        ("Model", ""),
+        ("MAC", ""),
+        ("Location", ""),
+        ("Unit", ""),
+        ("Description", ""),
+    ]
+
+    entries = {}
+
+    for i, (label, value) in enumerate(fields):
+        tk.Label(win, text=label).grid(row=i, column=0, sticky="w", padx=10, pady=4)
+
+        ent = tk.Entry(win, width=40)
+        ent.grid(row=i, column=1, padx=10, pady=4)
+        ent.insert(0, value)
+
+        entries[label] = ent
+    def save_new_device():
+        new_ip = entries["IP Address"].get().strip()
+
+        if not new_ip:
+            messagebox.showwarning("Hata", "IP Address boş olamaz")
+            return
+
+        if ip_exists(new_ip):
+            messagebox.showwarning(
+                "IP Çakışması",
+                f"Bu IP zaten başka bir cihaza ait:\n{new_ip}"
+            )
+            return
+
+        new_device = {
+            "name": entries["Device Name"].get(),
+            "ip": new_ip,
+            "device": entries["Device"].get(),
+            "model": entries["Model"].get(),
+            "mac": entries["MAC"].get(),
+            "location": entries["Location"].get(),
+            "unit": entries["Unit"].get(),
+            "description": entries["Description"].get(),
+            "latency": None,
+            "last_ping": None,
+            "status": "UNKNOWN"
+        }
+
+        devices.append(new_device)
+
+        from device_loader import add_device_to_excel
+        add_device_to_excel(new_device)
+
+        save_devices(devices)
+        refresh_device_list(keep_selection=True)
+
+        win.destroy()
+
+    btns = tk.Frame(win)
+    btns.grid(row=len(fields), column=0, columnspan=2, pady=10)
+
+    tk.Button(btns, text="Kaydet", width=12, command=save_new_device).pack(side=tk.LEFT, padx=5)
+    tk.Button(btns, text="İptal", width=12, command=win.destroy).pack(side=tk.LEFT, padx=5)
+        
+    
+        
 def show_device_details():
     sel = device_tree.selection()
     if not sel:
@@ -331,7 +443,7 @@ def show_device_details():
         update_device_in_excel(old_ip, device)
 
         save_devices(devices)
-        refresh_from_excel()
+        refresh_device_list(keep_selection=True)
         win.destroy()
 
     btns = tk.Frame(win)
@@ -391,7 +503,23 @@ ip_entry.pack(side=tk.LEFT, padx=5)
 start_btn = tk.Button(top, text="Başlat", width=10, command=toggle_ping)
 start_btn.pack(side=tk.LEFT, padx=5)
 
-tk.Button(top, text="Yenile", width=10, command=refresh_from_excel).pack(side=tk.LEFT)
+refresh_btn = tk.Button(top, text="Yenile", width=10, command=refresh_from_excel)
+refresh_btn.pack(side=tk.LEFT)
+
+add_btn = tk.Button(
+    top,
+    text="➕ Ekle",
+    width=10,
+    command=open_add_device_window
+)
+add_btn.pack(side=tk.LEFT, padx=5)
+
+top_controls = [
+    ip_entry,
+    start_btn,
+    refresh_btn,
+    add_btn
+]
 
 main = tk.PanedWindow(root, orient=tk.HORIZONTAL)
 main.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
@@ -412,20 +540,22 @@ for c in cols:
 device_tree.pack(fill=tk.BOTH, expand=True)
 
 # BINDINGS
-device_tree.bind("<<TreeviewSelect>>", on_single_click)
+device_tree.bind("<<TreeviewSelect>>", on_tree_select)
 device_tree.bind("<Double-1>", on_double_click)
-device_tree.bind("<Up>", lambda e: "break")
-device_tree.bind("<Down>", lambda e: "break")
+
 
 device_tree.bind("<Button-3>", show_context_menu)
 device_tree.bind("<Button-2>", show_context_menu)
 device_tree.bind("<Control-Button-1>", show_context_menu)
+root.bind("<Up>", lambda e: move_selection(-1))
+root.bind("<Down>", lambda e: move_selection(1))
 root.bind("<Shift-F10>", show_context_menu)
 
-root.bind("<Up>", on_arrow_key)
-root.bind("<Down>", on_arrow_key)
+
 root.bind("<Return>", start_ping)
 root.bind("<Escape>", stop_ping)
+root.bind("<Left>", lambda e: move_focus_horizontal(-1))
+root.bind("<Right>", lambda e: move_focus_horizontal(1))
 
 # RENKLER
 device_tree.tag_configure("UNKNOWN", foreground="#7f8c8d")
@@ -437,7 +567,7 @@ device_tree.tag_configure("DOWN", foreground="#c0392b")
 
 # CONTEXT MENU
 context_menu = tk.Menu(root, tearoff=0)
-context_menu.add_command(label="▶ Ping Başlat", command=start_ping)
+context_menu.add_command(label="▶ Ping Başlat", command=start_ping_from_menu)
 context_menu.add_command(label="⏹ Ping Durdur", command=stop_ping)
 context_menu.add_separator()
 

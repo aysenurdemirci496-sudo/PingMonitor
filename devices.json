@@ -2,31 +2,105 @@
   {
     "name": "a_1",
     "ip": "8.8.8.8",
-    "last_ping": "2026-01-09 15:03:18"
+    "device": "df",
+    "model": "",
+    "mac": "fdg",
+    "location": "fdg",
+    "unit": "",
+    "description": "",
+    "latency": 106.752,
+    "last_ping": "2026-01-14 09:17:48",
+    "status": "SLOW"
   },
   {
     "name": "b_2",
     "ip": "2.2.2.2",
-    "last_ping": null
+    "device": "dfgfd",
+    "model": "fdg",
+    "mac": "ayse",
+    "location": "fdg",
+    "unit": "fdg",
+    "description": "qaaa",
+    "latency": null,
+    "last_ping": "2026-01-14 08:27:43",
+    "status": "DOWN"
   },
   {
     "name": "c_2",
     "ip": "3.3.3.3",
-    "last_ping": "2026-01-09 13:25:04"
+    "device": "dfgfd",
+    "model": "ayse1",
+    "mac": "",
+    "location": "",
+    "unit": "fgv",
+    "description": "cxv",
+    "latency": 60.867,
+    "last_ping": "2026-01-14 09:31:44",
+    "status": "NORMAL"
   },
   {
     "name": "d_1",
     "ip": "149.140.146.212",
-    "last_ping": null
+    "device": "dfgfd",
+    "model": "",
+    "mac": "",
+    "location": "fdg",
+    "unit": "bv",
+    "description": "",
+    "latency": null,
+    "last_ping": "2026-01-14 09:40:31",
+    "status": "DOWN"
   },
   {
     "name": "e_1",
     "ip": "208.67.222.222",
-    "last_ping": "2026-01-09 13:46:17"
+    "device": "dfgfd",
+    "model": "",
+    "mac": "",
+    "location": "",
+    "unit": "",
+    "description": "fdg",
+    "latency": 112.841,
+    "last_ping": "2026-01-13 14:47:11",
+    "status": "SLOW"
   },
   {
-    "name": "f_1",
-    "ip": "9.9.9.9",
-    "last_ping": "2026-01-09 13:46:33"
+    "name": "10.20.30.40",
+    "ip": "10.20.30.40",
+    "device": "fg",
+    "model": "",
+    "mac": "",
+    "location": "dfg",
+    "unit": "",
+    "description": "",
+    "latency": 85.202,
+    "last_ping": "2026-01-14 08:44:16",
+    "status": "NORMAL"
+  },
+  {
+    "name": "f_2",
+    "ip": "1.1.1.2",
+    "device": "dfgfd",
+    "model": "",
+    "mac": "",
+    "location": "",
+    "unit": "",
+    "description": "",
+    "latency": 57.671,
+    "last_ping": "2026-01-14 09:18:28",
+    "status": "NORMAL"
+  },
+  {
+    "name": "",
+    "ip": "5.5.5.5",
+    "device": "",
+    "model": "",
+    "mac": "",
+    "location": "",
+    "unit": "",
+    "description": "",
+    "latency": null,
+    "last_ping": null,
+    "status": "UNKNOWN"
   }
 ]

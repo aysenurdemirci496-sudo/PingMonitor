@@ -6,6 +6,27 @@ DEVICES_JSON = "devices.json"
 DEVICES_XLSX = "devices.xlsx"
 
 
+
+def add_device_to_excel(device):
+    from openpyxl import load_workbook
+
+    wb = load_workbook("devices.xlsx")
+    ws = wb.active
+
+    ws.append([
+        device.get("name"),
+        device.get("ip"),
+        device.get("device"),
+        device.get("model"),
+        device.get("mac"),
+        device.get("location"),
+        device.get("unit"),
+        device.get("description")
+    ])
+
+    wb.save("devices.xlsx")
+
+
 def load_devices():
     if os.path.exists(DEVICES_JSON):
         try:
