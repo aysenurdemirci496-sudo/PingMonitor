@@ -562,20 +562,50 @@ main.add(output_box)
 right = tk.Frame(main)
 main.add(right)
 
-cols = ("Cihaz", "IP", "Ping (ms)", "Son Ping")
-device_tree = ttk.Treeview(right, columns=cols, show="headings")
+# 🔹 Treeview + Scrollbar için container
+tree_container = tk.Frame(right)
+tree_container.pack(fill=tk.BOTH, expand=True)
 
+# 🔹 Dikey scrollbar
+tree_scroll = ttk.Scrollbar(
+    tree_container,
+    orient=tk.VERTICAL
+)
+tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+
+# 🔹 Treeview
+cols = ("Cihaz", "IP", "Ping (ms)", "Son Ping")
+device_tree = ttk.Treeview(
+    tree_container,
+    columns=cols,
+    show="headings",
+    yscrollcommand=tree_scroll.set
+)
+
+# 🔹 Scrollbar ↔ Treeview bağlantısı
+tree_scroll.config(command=device_tree.yview)
+
+# 🔹 Column başlıkları ve genişlikleri
 for c in cols:
     device_tree.heading(c, text=c)
     device_tree.column(c, width=160 if c != "Son Ping" else 220)
 
-device_tree.pack(fill=tk.BOTH, expand=True)
+# 🔹 Treeview’i ekrana yerleştir (EN KRİTİK SATIR)
+device_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
 
 # BINDINGS
 device_tree.bind("<<TreeviewSelect>>", on_tree_select)
 device_tree.bind("<Double-1>", on_double_click)
 device_tree.bind("<Up>", lambda e: on_tree_arrow(-1))
 device_tree.bind("<Down>", lambda e: on_tree_arrow(1))
+
+def on_mousewheel(event):
+    device_tree.yview_scroll(int(-1*(event.delta/120)), "units")
+
+device_tree.bind("<MouseWheel>", on_mousewheel)        # Windows
+device_tree.bind("<Button-4>", lambda e: device_tree.yview_scroll(-1, "units"))  # Mac
+device_tree.bind("<Button-5>", lambda e: device_tree.yview_scroll(1, "units"))   # Mac
 
 
 device_tree.bind("<Button-3>", show_context_menu)
