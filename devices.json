@@ -34,8 +34,8 @@
     "location": "",
     "unit": "fgv",
     "description": "cxv",
-    "latency": 60.867,
-    "last_ping": "2026-01-14 09:31:44",
+    "latency": 58.015,
+    "last_ping": "2026-01-14 11:02:55",
     "status": "NORMAL"
   },
   {
@@ -48,7 +48,7 @@
     "unit": "bv",
     "description": "",
     "latency": null,
-    "last_ping": "2026-01-14 09:40:31",
+    "last_ping": "2026-01-14 11:02:44",
     "status": "DOWN"
   },
   {
@@ -60,8 +60,8 @@
     "location": "",
     "unit": "",
     "description": "fdg",
-    "latency": 112.841,
-    "last_ping": "2026-01-13 14:47:11",
+    "latency": 133.673,
+    "last_ping": "2026-01-14 11:03:04",
     "status": "SLOW"
   },
   {
@@ -99,8 +99,8 @@
     "location": "",
     "unit": "",
     "description": "",
-    "latency": null,
-    "last_ping": null,
-    "status": "UNKNOWN"
+    "latency": 69.424,
+    "last_ping": "2026-01-14 10:55:01",
+    "status": "NORMAL"
   }
 ]

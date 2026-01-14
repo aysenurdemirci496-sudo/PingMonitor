@@ -23,6 +23,27 @@ ping_thread = None
 ui_queue = queue.Queue()
 started_from_entry = False
 
+def update_tree_item_for_ip(ip):
+    for item in device_tree.get_children():
+        values = device_tree.item(item)["values"]
+        if values[1] == ip:
+            device = next((d for d in devices if d["ip"] == ip), None)
+            if not device:
+                return
+
+            latency_txt = "-" if device.get("latency") is None else f"{device['latency']:.1f}"
+
+            device_tree.item(
+                item,
+                values=(
+                    device["name"],
+                    device["ip"],
+                    latency_txt,
+                    device.get("last_ping") or "-"
+                ),
+                tags=(device.get("status", "UNKNOWN"),)
+            )
+            return
 
 # ---------------- PING HELPERS ----------------
 def extract_ping_ms(text):
@@ -99,9 +120,9 @@ def process_ui_queue():
 
         save_devices(devices)
 
-        # 🔴 Ping çalışıyorsa treeview refresh YAPMA
-        if not is_running:
-            refresh_device_list(keep_selection=True)
+        # ✅ Ping sırasında sadece ilgili satırı güncelle
+        if current_ip:
+            update_tree_item_for_ip(current_ip)
 
     root.after(100, process_ui_queue)
 
@@ -490,8 +511,16 @@ root.minsize(1100, 650)
 
 # 🔑 PLATFORM FONT STYLE (SADECE EKLENEN KISIM)
 style = ttk.Style(root)
-style.configure("Treeview", font=(FONT_NAME, 14), rowheight=36)
-style.configure("Treeview.Heading", font=(FONT_NAME, 15, "bold"))
+style.configure(
+    "Treeview",
+    font=(FONT_NAME, 10, "bold"),
+    rowheight=26
+)
+
+style.configure(
+    "Treeview.Heading",
+    font=(FONT_NAME, 11, "bold")
+)
 
 top = tk.Frame(root)
 top.pack(fill=tk.X, padx=10, pady=5)
