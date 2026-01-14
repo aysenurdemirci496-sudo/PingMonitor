@@ -34,8 +34,8 @@
     "location": "",
     "unit": "fgv",
     "description": "cxv",
-    "latency": 58.015,
-    "last_ping": "2026-01-14 11:02:55",
+    "latency": 56.466,
+    "last_ping": "2026-01-14 11:43:50",
     "status": "NORMAL"
   },
   {
@@ -60,9 +60,9 @@
     "location": "",
     "unit": "",
     "description": "fdg",
-    "latency": 133.673,
-    "last_ping": "2026-01-14 11:03:04",
-    "status": "SLOW"
+    "latency": 92.402,
+    "last_ping": "2026-01-14 11:43:21",
+    "status": "NORMAL"
   },
   {
     "name": "10.20.30.40",

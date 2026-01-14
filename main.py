@@ -204,6 +204,9 @@ def refresh_from_excel():
     refresh_device_list(keep_selection=True)
 
 # ---------------- DEVICE LIST ----------------
+def on_tree_arrow(direction):
+    move_selection(direction)
+    return "break"   # 🔴 EN KRİTİK SATIR
     
 def move_selection(direction):
     items = device_tree.get_children()
@@ -571,13 +574,13 @@ device_tree.pack(fill=tk.BOTH, expand=True)
 # BINDINGS
 device_tree.bind("<<TreeviewSelect>>", on_tree_select)
 device_tree.bind("<Double-1>", on_double_click)
+device_tree.bind("<Up>", lambda e: on_tree_arrow(-1))
+device_tree.bind("<Down>", lambda e: on_tree_arrow(1))
 
 
 device_tree.bind("<Button-3>", show_context_menu)
 device_tree.bind("<Button-2>", show_context_menu)
 device_tree.bind("<Control-Button-1>", show_context_menu)
-root.bind("<Up>", lambda e: move_selection(-1))
-root.bind("<Down>", lambda e: move_selection(1))
 root.bind("<Shift-F10>", show_context_menu)
 
 
