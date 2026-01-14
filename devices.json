@@ -8,9 +8,9 @@
     "location": "fdg",
     "unit": "",
     "description": "",
-    "latency": 106.752,
-    "last_ping": "2026-01-14 09:17:48",
-    "status": "SLOW"
+    "latency": 73.516,
+    "last_ping": "2026-01-14 12:07:49",
+    "status": "NORMAL"
   },
   {
     "name": "b_2",

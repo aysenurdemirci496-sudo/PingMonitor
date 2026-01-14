@@ -36,7 +36,7 @@ def update_tree_item_for_ip(ip):
             device_tree.item(
                 item,
                 values=(
-                    device["name"],
+                    device["device"],
                     device["ip"],
                     latency_txt,
                     device.get("last_ping") or "-"
@@ -244,7 +244,7 @@ def refresh_device_list(keep_selection=False):
         device_tree.insert(
             "",
             tk.END,
-            values=(d["name"], d["ip"], latency_txt, d.get("last_ping") or "-"),
+            values=(d["device"], d["ip"], latency_txt, d.get("last_ping") or "-"),
             tags=(d.get("status", "UNKNOWN"),)
         )
 
