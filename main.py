@@ -10,11 +10,23 @@ from tkinter import messagebox
 
 from device_loader import load_devices, load_devices_from_excel, save_devices
 
+
 # ---------------- PLATFORM ----------------
 IS_WINDOWS = platform.system().lower() == "windows"
 FONT_NAME = "Segoe UI" if IS_WINDOWS else "Helvetica"
 
 # ---------------- GLOBAL STATE ----------------
+COLUMN_WIDTHS = {
+    "Cihaz": 150,
+    "IP": 130,
+    "Ping (ms)": 100,
+    "Son Ping": 170,
+    "Model": 120,
+    "MAC": 160,
+    "Location": 140,
+    "Unit": 120,
+    "Description": 200
+}
 devices = []
 current_ip = None
 is_running = False
@@ -26,7 +38,7 @@ started_from_entry = False
 def update_tree_item_for_ip(ip):
     for item in device_tree.get_children():
         values = device_tree.item(item)["values"]
-        if values[1] == ip:
+        if values and values[1] == ip:
             device = next((d for d in devices if d["ip"] == ip), None)
             if not device:
                 return
@@ -36,10 +48,15 @@ def update_tree_item_for_ip(ip):
             device_tree.item(
                 item,
                 values=(
-                    device["device"],
-                    device["ip"],
+                    device.get("device", ""),
+                    device.get("ip", ""),
                     latency_txt,
-                    device.get("last_ping") or "-"
+                    device.get("last_ping") or "-",
+                    device.get("model", ""),
+                    device.get("mac", ""),
+                    device.get("location", ""),
+                    device.get("unit", ""),
+                    device.get("description", "")
                 ),
                 tags=(device.get("status", "UNKNOWN"),)
             )
@@ -58,6 +75,12 @@ def ip_exists(ip, exclude_device=None):
             return True
     return False
 
+def device_matches_filters(device):
+    for field, selected_values in active_filters.items():
+        if selected_values:
+            if device.get(field) not in selected_values:
+                return False
+    return True
 
 def status_by_latency(ms):
     if ms is None:
@@ -73,6 +96,38 @@ def status_by_latency(ms):
 
 def ping_command(ip):
     return ["ping", "-t", ip] if IS_WINDOWS else ["ping", ip]
+
+# ---------------- FILTER STATE ----------------
+FILTERABLE_FIELDS = {
+    "device": "Cihaz",
+    "model": "Model",
+    "mac": "MAC",
+    "location": "Location",
+    "unit": "Unit",
+    "description": "Description"
+}
+COLUMN_TO_FIELD = {
+    "Cihaz": "device",
+    "Model": "model",
+    "MAC": "mac",
+    "Location": "location",
+    "Unit": "unit",
+    "Description": "description"
+}
+# 🔹 Treeview
+cols = (
+    "Cihaz",
+    "IP",
+    "Ping (ms)",
+    "Son Ping",
+    "Model",
+    "MAC",
+    "Location",
+    "Unit",
+    "Description"
+)
+
+active_filters = {key: set() for key in FILTERABLE_FIELDS}
 
 # ---------------- PING LOOP ----------------
 def ping_loop(ip):
@@ -240,11 +295,24 @@ def refresh_device_list(keep_selection=False):
     device_tree.delete(*device_tree.get_children())
 
     for d in devices:
+        if not device_matches_filters(d):
+            continue
+
         latency_txt = "-" if d.get("latency") is None else f"{d['latency']:.1f}"
         device_tree.insert(
             "",
             tk.END,
-            values=(d["device"], d["ip"], latency_txt, d.get("last_ping") or "-"),
+            values=(
+                d.get("device", ""),
+                d.get("ip", ""),
+                latency_txt,
+                d.get("last_ping") or "-",
+                d.get("model", ""),
+                d.get("mac", ""),
+                d.get("location", ""),
+                d.get("unit", ""),
+                d.get("description", "")
+            ),
             tags=(d.get("status", "UNKNOWN"),)
         )
 
@@ -483,6 +551,55 @@ def copy_selected_ip():
     root.clipboard_clear()
     root.clipboard_append(ip)
 
+def open_filter_window(field):
+    win = tk.Toplevel(root)
+    win.title(f"{FILTERABLE_FIELDS[field]} Filtre")
+    win.geometry("300x400")
+    win.grab_set()
+
+    values = sorted(
+        set(d.get(field) for d in devices if d.get(field))
+    )
+
+    vars_map = {}
+
+    for val in values:
+        var = tk.BooleanVar(value=val in active_filters[field])
+        chk = tk.Checkbutton(win, text=val, variable=var)
+        chk.pack(anchor="w")
+        vars_map[val] = var
+    def apply_filters(field=field):
+        active_filters[field].clear()
+        for val, var in vars_map.items():
+            if var.get():
+                active_filters[field].add(val)
+                # 🔄 Başlık sembollerini güncelle
+        for col, field in COLUMN_TO_FIELD.items():
+            if active_filters[field]:
+                device_tree.heading(col, text=f"{col} ▲")
+            else:
+                device_tree.heading(col, text=f"{col} ▼")
+        refresh_device_list()
+        win.destroy()
+
+    tk.Button(win, text="OK", command=apply_filters).pack(pady=10)
+
+def on_heading_click(event):
+    region = device_tree.identify_region(event.x, event.y)
+    if region != "heading":
+        return
+
+    col_id = device_tree.identify_column(event.x)
+    col_index = int(col_id.replace("#", "")) - 1
+    col_name = cols[col_index]
+
+    # IP / Ping filtrelenmesin
+    if col_name not in COLUMN_TO_FIELD:
+        return
+
+    field = COLUMN_TO_FIELD[col_name]
+    open_filter_window(field)
+
 def show_context_menu(event):
     global selected_index
 
@@ -545,6 +662,7 @@ add_btn = tk.Button(
     command=open_add_device_window
 )
 add_btn.pack(side=tk.LEFT, padx=5)
+add_btn.config(width=18)
 
 top_controls = [
     ip_entry,
@@ -562,36 +680,49 @@ main.add(output_box)
 right = tk.Frame(main)
 main.add(right)
 
+
 # 🔹 Treeview + Scrollbar için container
 tree_container = tk.Frame(right)
 tree_container.pack(fill=tk.BOTH, expand=True)
 
 # 🔹 Dikey scrollbar
-tree_scroll = ttk.Scrollbar(
-    tree_container,
-    orient=tk.VERTICAL
-)
+tree_scroll = ttk.Scrollbar(tree_container, orient=tk.VERTICAL)
 tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
 
+# 🔹 Yatay scrollbar (DİKKAT: burada device_tree YOK)
+tree_scroll_x = ttk.Scrollbar(tree_container, orient=tk.HORIZONTAL)
+tree_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
+
 # 🔹 Treeview
-cols = ("Cihaz", "IP", "Ping (ms)", "Son Ping")
 device_tree = ttk.Treeview(
     tree_container,
     columns=cols,
     show="headings",
-    yscrollcommand=tree_scroll.set
+    yscrollcommand=tree_scroll.set,
+    xscrollcommand=tree_scroll_x.set
 )
+# 🔑 Treeview başlıklarını TANIMLA
+for c in cols:
+    device_tree.heading(c, text=c)
+    device_tree.column(c, width=COLUMN_WIDTHS[c], anchor="w")
+
+for c in cols:
+    if c in COLUMN_TO_FIELD:
+        device_tree.heading(c, text=f"{c} ▼")
+    else:
+        device_tree.heading(c, text=c)
 
 # 🔹 Scrollbar ↔ Treeview bağlantısı
 tree_scroll.config(command=device_tree.yview)
+tree_scroll_x.config(command=device_tree.xview)
 
-# 🔹 Column başlıkları ve genişlikleri
+# 🔹 Column genişlikleri
 for c in cols:
-    device_tree.heading(c, text=c)
-    device_tree.column(c, width=160 if c != "Son Ping" else 220)
+    device_tree.column(c, width=COLUMN_WIDTHS[c])
 
-# 🔹 Treeview’i ekrana yerleştir (EN KRİTİK SATIR)
 device_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+device_tree.update_idletasks()
+device_tree.bind("<Button-1>", on_heading_click)
 
 
 # BINDINGS
