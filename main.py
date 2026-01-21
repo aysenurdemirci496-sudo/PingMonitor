@@ -16,6 +16,9 @@ IS_WINDOWS = platform.system().lower() == "windows"
 FONT_NAME = "Segoe UI" if IS_WINDOWS else "Helvetica"
 
 # ---------------- GLOBAL STATE ----------------
+PAGE_SIZE = 100
+current_page = 1
+total_pages = 1
 COLUMN_WIDTHS = {
     "Cihaz": 150,
     "IP": 130,
@@ -27,6 +30,14 @@ COLUMN_WIDTHS = {
     "Unit": 120,
     "Description": 200
 }
+current_sort_column = None
+current_sort_reverse = False
+def update_column_headers():
+    for col in cols:
+        text = col
+        if col == current_sort_column:
+            text += " ▼" if current_sort_reverse else " ▲"
+        device_tree.heading(col, text=text)
 devices = []
 current_ip = None
 is_running = False
@@ -34,6 +45,7 @@ ping_process = None
 ping_thread = None
 ui_queue = queue.Queue()
 started_from_entry = False
+
 
 def update_tree_item_for_ip(ip):
     for item in device_tree.get_children():
@@ -94,12 +106,39 @@ def status_by_latency(ms):
     return "VERY_SLOW"
 
 
+def sort_devices_by_column(col, reverse=False):
+    global current_page
+    current_page = 1
+    global current_sort_column, current_sort_reverse
+
+    if col == "IP":
+        devices.sort(key=lambda d: ip_to_tuple(d.get("ip", "")), reverse=reverse)
+    else:
+        field = COLUMN_TO_FIELD.get(col)
+        devices.sort(
+            key=lambda d: (d.get(field) or "").lower(),
+            reverse=reverse
+        )
+
+    current_sort_column = col
+    current_sort_reverse = reverse
+
+    refresh_device_list(keep_selection=True)
+    update_column_headers()
+
 def ping_command(ip):
     return ["ping", "-t", ip] if IS_WINDOWS else ["ping", ip]
+
+def ip_to_tuple(ip):
+    try:
+        return tuple(int(x) for x in ip.split("."))
+    except:
+        return (0, 0, 0, 0)
 
 # ---------------- FILTER STATE ----------------
 FILTERABLE_FIELDS = {
     "device": "Cihaz",
+    "ip": "IP",           
     "model": "Model",
     "mac": "MAC",
     "location": "Location",
@@ -108,6 +147,7 @@ FILTERABLE_FIELDS = {
 }
 COLUMN_TO_FIELD = {
     "Cihaz": "device",
+    "IP": "ip",            
     "Model": "model",
     "MAC": "mac",
     "Location": "location",
@@ -284,6 +324,16 @@ def move_selection(direction):
     device_tree.see(items[new_index])
     write_ip_from_selection()
 
+def get_paged_devices(filtered_devices):
+    global total_pages
+
+    total_pages = max(1, (len(filtered_devices) + PAGE_SIZE - 1) // PAGE_SIZE)
+
+    start = (current_page - 1) * PAGE_SIZE
+    end = start + PAGE_SIZE
+
+    return filtered_devices[start:end]
+
 def refresh_device_list(keep_selection=False):
     # mevcut seçimi hatırla
     selected_ip = None
@@ -293,8 +343,10 @@ def refresh_device_list(keep_selection=False):
             selected_ip = device_tree.item(sel[0])["values"][1]
 
     device_tree.delete(*device_tree.get_children())
+    filtered = [d for d in devices if device_matches_filters(d)]
+    paged_devices = get_paged_devices(filtered)
 
-    for d in devices:
+    for d in paged_devices:
         if not device_matches_filters(d):
             continue
 
@@ -333,6 +385,8 @@ def refresh_device_list(keep_selection=False):
         device_tree.focus(items[0])
         device_tree.see(items[0])
         write_ip_from_selection()
+
+    update_page_label()
 
 
 def write_ip_from_selection():
@@ -378,6 +432,23 @@ def move_focus_horizontal(direction):
 
     if 0 <= new_index < len(top_controls):
         top_controls[new_index].focus_set()
+
+    refresh_device_list(keep_selection=True)
+
+def show_sort_menu(event, col):
+    menu = tk.Menu(root, tearoff=0)
+
+    menu.add_command(
+        label="A'dan Z'ye Sırala",
+        command=lambda: sort_devices_by_column(col, reverse=False)
+    )
+
+    menu.add_command(
+        label="Z'den A'ya Sırala",
+        command=lambda: sort_devices_by_column(col, reverse=True)
+    )
+
+    menu.tk_popup(event.x_root, event.y_root)
 
 
 
@@ -554,51 +625,118 @@ def copy_selected_ip():
 def open_filter_window(field):
     win = tk.Toplevel(root)
     win.title(f"{FILTERABLE_FIELDS[field]} Filtre")
-    win.geometry("300x400")
+    win.geometry("300x450")
     win.grab_set()
 
+    # 🔎 ARAMA KUTUSU
+    search_var = tk.StringVar()
+    search_entry = tk.Entry(win, textvariable=search_var)
+    search_entry.pack(fill=tk.X, padx=10, pady=5)
+
+    # ☑️ BUTONLAR
+    btn_frame = tk.Frame(win)
+    btn_frame.pack(fill=tk.X, padx=10)
+
+    # 📦 CHECKBOX ALANI
+    canvas = tk.Canvas(win)
+    scrollbar = ttk.Scrollbar(win, orient="vertical", command=canvas.yview)
+    scroll_frame = tk.Frame(canvas)
+
+    scroll_frame.bind(
+        "<Configure>",
+        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+    )
+
+    canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
+    canvas.configure(yscrollcommand=scrollbar.set)
+
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    # 🔢 DEĞERLER
     values = sorted(
-        set(d.get(field) for d in devices if d.get(field))
+        set(str(d.get(field)) for d in devices if field in d and d[field] not in (None, "")),
+        key=lambda x: tuple(int(p) for p in x.split(".")) if field == "ip" else x.lower()
     )
 
     vars_map = {}
+    checkbuttons = {}
 
-    for val in values:
-        var = tk.BooleanVar(value=val in active_filters[field])
-        chk = tk.Checkbutton(win, text=val, variable=var)
-        chk.pack(anchor="w")
-        vars_map[val] = var
-    def apply_filters(field=field):
+    def render_list():
+        for chk in checkbuttons.values():
+            chk.destroy()
+        checkbuttons.clear()
+
+        keyword = search_var.get().lower()
+
+        for val in values:
+            if keyword and keyword not in val.lower():
+                continue
+
+            var = tk.BooleanVar(value=val in active_filters[field])
+            chk = tk.Checkbutton(scroll_frame, text=val, variable=var)
+            chk.pack(anchor="w")
+            vars_map[val] = var
+            checkbuttons[val] = chk
+
+    def select_all():
+        for var in vars_map.values():
+            var.set(True)
+
+    def clear_all():
+        for var in vars_map.values():
+            var.set(False)
+
+    tk.Button(btn_frame, text="☑️ Tümünü Seç", command=select_all).pack(side=tk.LEFT)
+    tk.Button(btn_frame, text="❌ Temizle", command=clear_all).pack(side=tk.LEFT, padx=5)
+
+    search_var.trace_add("write", lambda *args: render_list())
+
+    render_list()
+
+    def apply_filters():
+        global current_page
+        current_page = 1
         active_filters[field].clear()
+
         for val, var in vars_map.items():
             if var.get():
                 active_filters[field].add(val)
-                # 🔄 Başlık sembollerini güncelle
-        for col, field in COLUMN_TO_FIELD.items():
-            if active_filters[field]:
-                device_tree.heading(col, text=f"{col} ▲")
+
+        for col_name, field_name in COLUMN_TO_FIELD.items():
+            if active_filters[field_name]:
+                device_tree.heading(col_name, text=f"{col_name} ▲")
             else:
-                device_tree.heading(col, text=f"{col} ▼")
+                device_tree.heading(col_name, text=f"{col_name} ▼")
+
         refresh_device_list()
         win.destroy()
 
     tk.Button(win, text="OK", command=apply_filters).pack(pady=10)
 
-def on_heading_click(event):
-    region = device_tree.identify_region(event.x, event.y)
-    if region != "heading":
-        return
+def show_column_menu(event, col):
+    menu = tk.Menu(root, tearoff=0)
 
-    col_id = device_tree.identify_column(event.x)
-    col_index = int(col_id.replace("#", "")) - 1
-    col_name = cols[col_index]
+    # 🔼🔽 SIRALAMA (HER SÜTUN)
+    menu.add_command(
+        label="🔼 A'dan Z'ye Sırala",
+        command=lambda: sort_devices_by_column(col, reverse=False)
+    )
+    menu.add_command(
+        label="🔽 Z'den A'ya Sırala",
+        command=lambda: sort_devices_by_column(col, reverse=True)
+    )
 
-    # IP / Ping filtrelenmesin
-    if col_name not in COLUMN_TO_FIELD:
-        return
+    # 🔎 FİLTRE (IP DAHİL)
+    if col in COLUMN_TO_FIELD:
+        menu.add_separator()
+        menu.add_command(
+            label="🔎 Filtrele",
+            command=lambda: open_filter_window(COLUMN_TO_FIELD[col])
+        )
 
-    field = COLUMN_TO_FIELD[col_name]
-    open_filter_window(field)
+    menu.tk_popup(event.x_root, event.y_root)
+
 
 def show_context_menu(event):
     global selected_index
@@ -701,6 +839,17 @@ device_tree = ttk.Treeview(
     yscrollcommand=tree_scroll.set,
     xscrollcommand=tree_scroll_x.set
 )
+def on_heading_click(event):
+    region = device_tree.identify_region(event.x, event.y)
+    if region != "heading":
+        return
+
+    col_id = device_tree.identify_column(event.x)
+    col_index = int(col_id.replace("#", "")) - 1
+    col_name = cols[col_index]
+
+    show_column_menu(event, col_name)
+
 # 🔑 Treeview başlıklarını TANIMLA
 for c in cols:
     device_tree.heading(c, text=c)
@@ -722,10 +871,36 @@ for c in cols:
 
 device_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 device_tree.update_idletasks()
-device_tree.bind("<Button-1>", on_heading_click)
 
+# ---------------- PAGINATION UI ----------------
+pagination = tk.Frame(right)
+pagination.pack(fill=tk.X, pady=5)
+
+page_label = tk.Label(pagination, text="Sayfa 1 / 1")
+page_label.pack(side=tk.LEFT, padx=10)
+
+def update_page_label():
+    page_label.config(text=f"Sayfa {current_page} / {total_pages}")
+
+def prev_page():
+    global current_page
+    if current_page > 1:
+        current_page -= 1
+        refresh_device_list()
+        update_page_label()
+
+def next_page():
+    global current_page
+    if current_page < total_pages:
+        current_page += 1
+        refresh_device_list()
+        update_page_label()
+
+tk.Button(pagination, text="◀ Önceki", command=prev_page).pack(side=tk.LEFT)
+tk.Button(pagination, text="Sonraki ▶", command=next_page).pack(side=tk.LEFT)
 
 # BINDINGS
+device_tree.bind("<Button-1>", on_heading_click)
 device_tree.bind("<<TreeviewSelect>>", on_tree_select)
 device_tree.bind("<Double-1>", on_double_click)
 device_tree.bind("<Up>", lambda e: on_tree_arrow(-1))

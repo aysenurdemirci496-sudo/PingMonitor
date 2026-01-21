@@ -1,16 +1,59 @@
 [
   {
-    "name": "a_1",
-    "ip": "8.8.8.8",
-    "device": "df",
+    "name": "10.20.30.40",
+    "ip": "10.20.30.40",
+    "device": "fg",
     "model": "",
-    "mac": "fdg",
-    "location": "fdg",
+    "mac": "",
+    "location": "dfg",
     "unit": "",
     "description": "",
-    "latency": 73.516,
-    "last_ping": "2026-01-14 12:07:49",
-    "status": "NORMAL"
+    "latency": null,
+    "last_ping": "2026-01-19 14:08:37",
+    "status": "DOWN",
+    "selected": false
+  },
+  {
+    "name": "e_1",
+    "ip": "208.67.222.222",
+    "device": "dfgfd",
+    "model": "",
+    "mac": "",
+    "location": "",
+    "unit": "",
+    "description": "fdg",
+    "latency": 93.488,
+    "last_ping": "2026-01-19 14:53:03",
+    "status": "NORMAL",
+    "selected": true
+  },
+  {
+    "name": "d_1",
+    "ip": "149.140.146.212",
+    "device": "dfgfd",
+    "model": "",
+    "mac": "",
+    "location": "fdg",
+    "unit": "bv",
+    "description": "",
+    "latency": null,
+    "last_ping": "2026-01-19 13:43:37",
+    "status": "DOWN",
+    "selected": true
+  },
+  {
+    "name": "c_2",
+    "ip": "3.3.3.3",
+    "device": "dfgfd",
+    "model": "ayse1",
+    "mac": "",
+    "location": "",
+    "unit": "fgv",
+    "description": "cxv",
+    "latency": 93.483,
+    "last_ping": "2026-01-19 14:53:03",
+    "status": "NORMAL",
+    "selected": true
   },
   {
     "name": "b_2",
@@ -23,59 +66,8 @@
     "description": "qaaa",
     "latency": null,
     "last_ping": "2026-01-14 08:27:43",
-    "status": "DOWN"
-  },
-  {
-    "name": "c_2",
-    "ip": "3.3.3.3",
-    "device": "dfgfd",
-    "model": "ayse1",
-    "mac": "",
-    "location": "",
-    "unit": "fgv",
-    "description": "cxv",
-    "latency": 56.466,
-    "last_ping": "2026-01-14 11:43:50",
-    "status": "NORMAL"
-  },
-  {
-    "name": "d_1",
-    "ip": "149.140.146.212",
-    "device": "dfgfd",
-    "model": "",
-    "mac": "",
-    "location": "fdg",
-    "unit": "bv",
-    "description": "",
-    "latency": null,
-    "last_ping": "2026-01-14 11:02:44",
-    "status": "DOWN"
-  },
-  {
-    "name": "e_1",
-    "ip": "208.67.222.222",
-    "device": "dfgfd",
-    "model": "",
-    "mac": "",
-    "location": "",
-    "unit": "",
-    "description": "fdg",
-    "latency": 92.402,
-    "last_ping": "2026-01-14 11:43:21",
-    "status": "NORMAL"
-  },
-  {
-    "name": "10.20.30.40",
-    "ip": "10.20.30.40",
-    "device": "fg",
-    "model": "",
-    "mac": "",
-    "location": "dfg",
-    "unit": "",
-    "description": "",
-    "latency": 85.202,
-    "last_ping": "2026-01-14 08:44:16",
-    "status": "NORMAL"
+    "status": "DOWN",
+    "selected": true
   },
   {
     "name": "f_2",
@@ -86,9 +78,24 @@
     "location": "",
     "unit": "",
     "description": "",
-    "latency": 57.671,
-    "last_ping": "2026-01-14 09:18:28",
-    "status": "NORMAL"
+    "latency": 102.932,
+    "last_ping": "2026-01-19 14:53:03",
+    "status": "SLOW",
+    "selected": true
+  },
+  {
+    "name": "a_1",
+    "ip": "8.8.8.8",
+    "device": "df",
+    "model": "",
+    "mac": "fdg",
+    "location": "fdg",
+    "unit": "",
+    "description": "",
+    "latency": 73.516,
+    "last_ping": "2026-01-14 12:07:49",
+    "status": "NORMAL",
+    "selected": false
   },
   {
     "name": "",
@@ -101,6 +108,7 @@
     "description": "",
     "latency": 69.424,
     "last_ping": "2026-01-14 10:55:01",
-    "status": "NORMAL"
+    "status": "NORMAL",
+    "selected": false
   }
 ]
