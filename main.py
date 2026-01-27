@@ -88,10 +88,24 @@ def ip_exists(ip, exclude_device=None):
     return False
 
 def device_matches_filters(device):
+    # 1️⃣ Checkbox filtreleri
     for field, selected_values in active_filters.items():
         if selected_values:
             if device.get(field) not in selected_values:
                 return False
+
+    # 2️⃣ Global arama
+    if search_text:
+        haystack = " ".join(
+            str(device.get(k, "")).lower()
+            for k in [
+                "device", "ip", "model",
+                "mac", "location", "unit", "description"
+            ]
+        )
+        if search_text.lower() not in haystack:
+            return False
+
     return True
 
 def status_by_latency(ms):
@@ -168,6 +182,7 @@ cols = (
 )
 
 active_filters = {key: set() for key in FILTERABLE_FIELDS}
+search_text = ""
 
 # ---------------- PING LOOP ----------------
 def ping_loop(ip):
@@ -625,21 +640,33 @@ def copy_selected_ip():
 def open_filter_window(field):
     win = tk.Toplevel(root)
     win.title(f"{FILTERABLE_FIELDS[field]} Filtre")
-    win.geometry("300x450")
+    win.geometry("320x450")
+    win.resizable(False, False)
     win.grab_set()
 
-    # 🔎 ARAMA KUTUSU
+    # ================== ARAMA ==================
     search_var = tk.StringVar()
     search_entry = tk.Entry(win, textvariable=search_var)
-    search_entry.pack(fill=tk.X, padx=10, pady=5)
+    search_entry.pack(fill=tk.X, padx=10, pady=(10, 5))
 
-    # ☑️ BUTONLAR
-    btn_frame = tk.Frame(win)
-    btn_frame.pack(fill=tk.X, padx=10)
+    # ================== ÜST BUTONLAR ==================
+    top_btns = tk.Frame(win)
+    top_btns.pack(fill=tk.X, padx=10, pady=5)
 
-    # 📦 CHECKBOX ALANI
-    canvas = tk.Canvas(win)
-    scrollbar = ttk.Scrollbar(win, orient="vertical", command=canvas.yview)
+    # bunlar aşağıda tanımlanacak ama butonlar burada duracak
+    def select_all(): pass
+    def clear_all(): pass
+
+    tk.Button(top_btns, text="☑️ Tümünü Seç", command=lambda: select_all()).pack(side=tk.LEFT)
+    tk.Button(top_btns, text="❌ Temizle", command=lambda: clear_all()).pack(side=tk.LEFT, padx=5)
+
+    # ================== SCROLLABLE ALAN ==================
+    list_container = tk.Frame(win)
+    list_container.pack(fill=tk.BOTH, expand=True, padx=10)
+
+    canvas = tk.Canvas(list_container)
+    scrollbar = ttk.Scrollbar(list_container, orient="vertical", command=canvas.yview)
+
     scroll_frame = tk.Frame(canvas)
 
     scroll_frame.bind(
@@ -650,12 +677,30 @@ def open_filter_window(field):
     canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
     canvas.configure(yscrollcommand=scrollbar.set)
 
-    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-    # 🔢 DEĞERLER
+    # ================== ALT OK BUTONU ==================
+    bottom = tk.Frame(win)
+    bottom.pack(fill=tk.X, pady=10)
+
+    def apply_filters():
+        global current_page
+        current_page = 1
+        active_filters[field].clear()
+
+        for val, var in vars_map.items():
+            if var.get():
+                active_filters[field].add(val)
+
+        refresh_device_list()
+        win.destroy()
+
+    tk.Button(bottom, text="OK", width=10, command=apply_filters).pack(side=tk.RIGHT, padx=10)
+
+    # ================== VERİLER ==================
     values = sorted(
-        set(str(d.get(field)) for d in devices if field in d and d[field] not in (None, "")),
+        set(str(d.get(field)) for d in devices if d.get(field)),
         key=lambda x: tuple(int(p) for p in x.split(".")) if field == "ip" else x.lower()
     )
 
@@ -666,6 +711,7 @@ def open_filter_window(field):
         for chk in checkbuttons.values():
             chk.destroy()
         checkbuttons.clear()
+        vars_map.clear()
 
         keyword = search_var.get().lower()
 
@@ -676,6 +722,7 @@ def open_filter_window(field):
             var = tk.BooleanVar(value=val in active_filters[field])
             chk = tk.Checkbutton(scroll_frame, text=val, variable=var)
             chk.pack(anchor="w")
+
             vars_map[val] = var
             checkbuttons[val] = chk
 
@@ -687,32 +734,25 @@ def open_filter_window(field):
         for var in vars_map.values():
             var.set(False)
 
-    tk.Button(btn_frame, text="☑️ Tümünü Seç", command=select_all).pack(side=tk.LEFT)
-    tk.Button(btn_frame, text="❌ Temizle", command=clear_all).pack(side=tk.LEFT, padx=5)
-
     search_var.trace_add("write", lambda *args: render_list())
-
     render_list()
+    
+def clear_all_filters():
+    global current_page
 
-    def apply_filters():
-        global current_page
-        current_page = 1
+    # 1️⃣ tüm filtre setlerini boşalt
+    for field in active_filters:
         active_filters[field].clear()
 
-        for val, var in vars_map.items():
-            if var.get():
-                active_filters[field].add(val)
+    # 2️⃣ kolon başlıklarını eski haline döndür
+    for col in COLUMN_TO_FIELD:
+        device_tree.heading(col, text=f"{col} ▼")
 
-        for col_name, field_name in COLUMN_TO_FIELD.items():
-            if active_filters[field_name]:
-                device_tree.heading(col_name, text=f"{col_name} ▲")
-            else:
-                device_tree.heading(col_name, text=f"{col_name} ▼")
+    # 3️⃣ sayfayı başa al
+    current_page = 1
 
-        refresh_device_list()
-        win.destroy()
-
-    tk.Button(win, text="OK", command=apply_filters).pack(pady=10)
+    # 4️⃣ listeyi yenile
+    refresh_device_list()
 
 def show_column_menu(event, col):
     menu = tk.Menu(root, tearoff=0)
@@ -782,24 +822,43 @@ style.configure(
 
 top = tk.Frame(root)
 top.pack(fill=tk.X, padx=10, pady=5)
+left_controls = tk.Frame(top)
+left_controls.pack(side=tk.LEFT)
 
-tk.Label(top, text="IP:", font=(FONT_NAME, 11)).pack(side=tk.LEFT)
-ip_entry = tk.Entry(top, width=25, font=(FONT_NAME, 11))
+right_controls = tk.Frame(top)
+right_controls.pack(side=tk.RIGHT)
+
+tk.Label(left_controls, text="IP:", font=(FONT_NAME, 11)).pack(side=tk.LEFT)
+
+ip_entry = tk.Entry(left_controls, width=25, font=(FONT_NAME, 11))
 ip_entry.pack(side=tk.LEFT, padx=5)
 
-start_btn = tk.Button(top, text="Başlat", width=10, command=toggle_ping)
+start_btn = tk.Button(left_controls, text="Başlat", width=10, command=toggle_ping)
 start_btn.pack(side=tk.LEFT, padx=5)
 
-refresh_btn = tk.Button(top, text="Yenile", width=10, command=refresh_from_excel)
+refresh_btn = tk.Button(left_controls, text="Yenile", width=10, command=refresh_from_excel)
 refresh_btn.pack(side=tk.LEFT)
 
 add_btn = tk.Button(
-    top,
+    left_controls,
     text="➕ Ekle",
-    width=10,
+    width=18,
     command=open_add_device_window
 )
 add_btn.pack(side=tk.LEFT, padx=5)
+
+tk.Label(right_controls, text="Ara:", font=(FONT_NAME, 11)).pack(side=tk.LEFT, padx=(0, 5))
+
+search_entry = tk.Entry(right_controls, width=25, font=(FONT_NAME, 11))
+search_entry.pack(side=tk.LEFT)
+
+def on_search_change(event=None):
+    global search_text
+    search_text = search_entry.get().strip()
+    refresh_device_list()
+
+search_entry.bind("<KeyRelease>", on_search_change)
+
 add_btn.config(width=18)
 
 top_controls = [
@@ -946,6 +1005,11 @@ context_menu.add_separator()
 context_menu.add_command(label="📋 IP Kopyala", command=copy_selected_ip)
 context_menu.add_separator()
 context_menu.add_command(label="🔄 Excel'den Yenile", command=refresh_from_excel)
+context_menu.add_separator()
+context_menu.add_command(
+    label="🧹 Tüm Filtreleri Temizle",
+    command=clear_all_filters
+)
 
 # ---------------- START ----------------
 devices = load_devices()
