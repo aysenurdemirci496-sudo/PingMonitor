@@ -16,6 +16,7 @@ IS_WINDOWS = platform.system().lower() == "windows"
 FONT_NAME = "Segoe UI" if IS_WINDOWS else "Helvetica"
 
 # ---------------- GLOBAL STATE ----------------
+
 PAGE_SIZE = 100
 current_page = 1
 total_pages = 1
@@ -42,6 +43,7 @@ devices = []
 current_ip = None
 is_running = False
 ping_process = None
+is_bulk_running = False
 ping_thread = None
 ui_queue = queue.Queue()
 started_from_entry = False
@@ -76,8 +78,49 @@ def update_tree_item_for_ip(ip):
 
 # ---------------- PING HELPERS ----------------
 def extract_ping_ms(text):
-    match = re.search(r"time[=<]?\s*([\d\.]+)\s*ms", text.lower())
-    return float(match.group(1)) if match else None
+    text = text.lower()
+
+    # time=14.2 ms | time<1ms | time=1ms
+    match = re.search(r"time[=<]?\s*([\d\.]+)\s*ms", text)
+    if match:
+        return float(match.group(1))
+
+    # bazı sistemlerde boşluk yok: time<1ms
+    match = re.search(r"time[=<]?([\d\.]+)ms", text)
+    if match:
+        return float(match.group(1))
+
+    return None
+
+def single_ping(ip, timeout=2):
+    try:
+        if IS_WINDOWS:
+            cmd = ["ping", "-n", "1", "-w", str(timeout * 1000), ip]
+        else:
+            cmd = ["ping", "-c", "1", ip]
+
+        output = subprocess.check_output(
+            cmd,
+            stderr=subprocess.STDOUT,
+            text=True
+        )
+
+        return extract_ping_ms(output)
+
+    except subprocess.CalledProcessError:
+        return None
+    
+from concurrent.futures import ThreadPoolExecutor
+
+def bulk_ping_devices(devices_to_ping):
+    def ping_one(device):
+        ip = device["ip"]
+        ms = single_ping(ip)
+        ui_queue.put(("BULK", ip, ms))
+
+    # aynı anda EN FAZLA 10 ping
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        executor.map(ping_one, devices_to_ping)
 
 def ip_exists(ip, exclude_device=None):
     for d in devices:
@@ -86,6 +129,19 @@ def ip_exists(ip, exclude_device=None):
                 continue
             return True
     return False
+
+def bulk_ping_worker(devices_to_ping):
+    global is_bulk_running
+
+    def ping_one(device):
+        ip = device["ip"]
+        ms = single_ping(ip)
+        ui_queue.put(("BULK", ip, ms))
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        executor.map(ping_one, devices_to_ping)
+
+    ui_queue.put(("BULK_DONE", None, None))
 
 def device_matches_filters(device):
     # 1️⃣ Checkbox filtreleri
@@ -201,7 +257,7 @@ def ping_loop(ip):
     for line in ping_process.stdout:
         if not is_running:
             break
-        ui_queue.put(line)
+        ui_queue.put(("SINGLE", ip, line))
 
     try:
         ping_process.terminate()
@@ -211,30 +267,57 @@ def ping_loop(ip):
 # ---------------- UI QUEUE ----------------
 def process_ui_queue():
     while not ui_queue.empty():
-        line = ui_queue.get()
+        item = ui_queue.get()
 
-        output_box.config(state=tk.NORMAL)
-        output_box.insert(tk.END, line)
-        output_box.see(tk.END)
-        output_box.config(state=tk.DISABLED)
-
-        ms = extract_ping_ms(line)
+        item_type, ip, payload = item
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        for d in devices:
-            if d["ip"] == current_ip:
-                d["latency"] = ms
-                d["last_ping"] = now
-                d["status"] = status_by_latency(ms)
-                break
+        # 🔵 TEKLİ PING
+        if item_type == "SINGLE":
+            line = payload
 
-        save_devices(devices)
+            output_box.config(state=tk.NORMAL)
+            output_box.insert(tk.END, line)
+            output_box.see(tk.END)
+            output_box.config(state=tk.DISABLED)
 
-        # ✅ Ping sırasında sadece ilgili satırı güncelle
-        if current_ip:
-            update_tree_item_for_ip(current_ip)
+            ms = extract_ping_ms(line)
 
-    root.after(100, process_ui_queue)
+            for d in devices:
+                if d["ip"] == ip:
+                    d["latency"] = ms
+                    d["last_ping"] = now
+                    d["status"] = status_by_latency(ms)
+                    update_tree_item_for_ip(ip)
+                    break
+
+            save_devices(devices)
+
+        # 🟢 TOPLU PING
+        elif item_type == "BULK":
+            ms = payload
+
+            for d in devices:
+                if d["ip"] == ip:
+                    d["latency"] = ms
+                    d["last_ping"] = now
+                    d["status"] = status_by_latency(ms)
+                    update_tree_item_for_ip(ip)
+                    break
+
+          
+
+        # 🔴 TOPLU PING BİTTİ
+        elif item_type == "BULK_DONE":
+            global is_bulk_running
+
+            is_bulk_running = False
+            save_devices(devices)
+            start_btn.config(state=tk.NORMAL)
+            refresh_btn.config(state=tk.NORMAL)
+            add_btn.config(state=tk.NORMAL)
+
+    root.after(30, process_ui_queue)
 
 # ---------------- ACTIONS ----------------
 def start_ping(event=None):
@@ -314,6 +397,51 @@ def refresh_from_excel():
     refresh_device_list(keep_selection=True)
 
 # ---------------- DEVICE LIST ----------------
+def extend_selection(direction):
+    items = device_tree.get_children()
+    if not items:
+        return "break"
+
+    sel = device_tree.selection()
+
+    # hiç seçim yoksa → ilk satırı seç
+    if not sel:
+        device_tree.selection_set(items[0])
+        device_tree.focus(items[0])
+        return "break"
+
+    # son seçili satır
+    last = sel[-1]
+    index = items.index(last)
+
+    new_index = index + direction
+    if new_index < 0 or new_index >= len(items):
+        return "break"
+
+    new_item = items[new_index]
+
+    # yeni satırı DAHİL ET
+    device_tree.selection_add(new_item)
+    device_tree.focus(new_item)
+    device_tree.see(new_item)
+
+    return "break"
+
+    
+def get_selected_devices():
+    selected = []
+    for item in device_tree.selection():
+        values = device_tree.item(item)["values"]
+        if not values:
+            continue
+
+        ip = values[1]
+        dev = next((d for d in devices if d["ip"] == ip), None)
+        if dev:
+            selected.append(dev)
+
+    return selected
+
 def on_tree_arrow(direction):
     move_selection(direction)
     return "break"   # 🔴 EN KRİTİK SATIR
@@ -337,7 +465,12 @@ def move_selection(direction):
     device_tree.selection_set(items[new_index])
     device_tree.focus(items[new_index])
     device_tree.see(items[new_index])
-    write_ip_from_selection()
+    def write_ip_from_selection():
+        global started_from_entry
+
+        # 🔴 BİRDEN FAZLA SEÇİM VARSA HİÇBİR ŞEY YAPMA
+        if len(device_tree.selection()) > 1:
+            return
 
 def get_paged_devices(filtered_devices):
     global total_pages
@@ -468,6 +601,39 @@ def show_sort_menu(event, col):
 
 
 # ---------------- CONTEXT MENU ----------------
+def start_bulk_ping():
+    global is_bulk_running
+
+    if is_running:
+        messagebox.showwarning(
+            "Uyarı",
+            "Tekli ping çalışırken toplu ping başlatılamaz."
+        )
+        return
+
+    if is_bulk_running:
+        return
+
+    selected = get_selected_devices()
+
+    if not selected:
+        messagebox.showinfo("Bilgi", "Önce bir veya daha fazla cihaz seçmelisin")
+        return
+
+    is_bulk_running = True
+
+    # 🔒 Butonları kilitle
+    start_btn.config(state=tk.DISABLED)
+    refresh_btn.config(state=tk.DISABLED)
+    add_btn.config(state=tk.DISABLED)
+
+    threading.Thread(
+        target=bulk_ping_worker,
+        args=(selected,),
+        daemon=True
+    ).start()
+
+
 def open_add_device_window():
     ip = ip_entry.get().strip()
 
@@ -779,27 +945,20 @@ def show_column_menu(event, col):
 
 
 def show_context_menu(event):
-    global selected_index
-
-    if hasattr(event, "y"):
-        row_id = device_tree.identify_row(event.y)
-    else:
-        sel = device_tree.selection()
-        row_id = sel[0] if sel else None
+    # Sağ tık yapılan satırı bul
+    row_id = device_tree.identify_row(event.y)
 
     if not row_id:
         return
 
-    items = device_tree.get_children()
-    selected_index = items.index(row_id)
+    # Eğer o satır zaten seçiliyse -> HİÇBİR ŞEY YAPMA
+    if row_id not in device_tree.selection():
+        # değilse sadece o satırı seç (tekli senaryo)
+        device_tree.selection_set(row_id)
+        device_tree.focus(row_id)
+        write_ip_from_selection()
 
-    device_tree.selection_set(row_id)
-    device_tree.focus(row_id)
-    write_ip_from_selection()
-
-    x = event.x_root if hasattr(event, "x_root") else root.winfo_pointerx()
-    y = event.y_root if hasattr(event, "y_root") else root.winfo_pointery()
-    context_menu.tk_popup(x, y)
+    context_menu.tk_popup(event.x_root, event.y_root)
 
 # ---------------- UI ----------------
 root = tk.Tk()
@@ -895,6 +1054,7 @@ device_tree = ttk.Treeview(
     tree_container,
     columns=cols,
     show="headings",
+    selectmode="extended",   # ← BU SATIR ŞART
     yscrollcommand=tree_scroll.set,
     xscrollcommand=tree_scroll_x.set
 )
@@ -959,11 +1119,13 @@ tk.Button(pagination, text="◀ Önceki", command=prev_page).pack(side=tk.LEFT)
 tk.Button(pagination, text="Sonraki ▶", command=next_page).pack(side=tk.LEFT)
 
 # BINDINGS
-device_tree.bind("<Button-1>", on_heading_click)
+device_tree.bind("<Button-1>", on_heading_click, add="+")
 device_tree.bind("<<TreeviewSelect>>", on_tree_select)
 device_tree.bind("<Double-1>", on_double_click)
 device_tree.bind("<Up>", lambda e: on_tree_arrow(-1))
 device_tree.bind("<Down>", lambda e: on_tree_arrow(1))
+device_tree.bind("<Shift-Up>", lambda e: extend_selection(-1))
+device_tree.bind("<Shift-Down>", lambda e: extend_selection(1))
 
 def on_mousewheel(event):
     device_tree.yview_scroll(int(-1*(event.delta/120)), "units")
@@ -996,6 +1158,11 @@ device_tree.tag_configure("DOWN", foreground="#c0392b")
 context_menu = tk.Menu(root, tearoff=0)
 context_menu.add_command(label="▶ Ping Başlat", command=start_ping_from_menu)
 context_menu.add_command(label="⏹ Ping Durdur", command=stop_ping)
+context_menu.add_separator()
+context_menu.add_command(
+    label="📡 Seçilenlere Toplu Ping",
+    command=start_bulk_ping
+)
 context_menu.add_separator()
 
 # 🔴 YENİ EKLENEN
