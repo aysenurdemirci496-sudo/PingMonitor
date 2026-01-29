@@ -830,7 +830,11 @@ def open_filter_window(field):
     list_container = tk.Frame(win)
     list_container.pack(fill=tk.BOTH, expand=True, padx=10)
 
-    canvas = tk.Canvas(list_container)
+    canvas = tk.Canvas(
+    list_container,
+    borderwidth=0,
+    highlightthickness=0
+    )
     scrollbar = ttk.Scrollbar(list_container, orient="vertical", command=canvas.yview)
 
     scroll_frame = tk.Frame(canvas)
@@ -840,11 +844,46 @@ def open_filter_window(field):
         lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
     )
 
-    canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
-    canvas.configure(yscrollcommand=scrollbar.set)
+    window_id = canvas.create_window(
+    (0, 0),
+    window=scroll_frame,
+    anchor="nw"
+    )
+    def _resize_canvas(event):
+        canvas.itemconfig(window_id, width=event.width)
+
+        canvas.bind("<Configure>", _resize_canvas)
+        canvas.configure(yscrollcommand=scrollbar.set)
 
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    # 🟢 Mouse scroll desteği (Windows + Mac)
+    def _on_mousewheel(event):
+        if not canvas.winfo_exists():
+            return
+
+        if event.delta:
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        elif event.num == 4:
+            canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            canvas.yview_scroll(1, "units")
+
+    win.bind("<MouseWheel>", _on_mousewheel)
+    win.bind("<Button-4>", _on_mousewheel)
+    win.bind("<Button-5>", _on_mousewheel)   
+
+    def _on_mousewheel(event):
+        if not canvas.winfo_exists():
+            return
+
+        if event.delta:
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        elif event.num == 4:
+            canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            canvas.yview_scroll(1, "units")
 
     # ================== ALT OK BUTONU ==================
     bottom = tk.Frame(win)
