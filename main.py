@@ -492,9 +492,24 @@ def refresh_from_excel():
     refresh_device_list(keep_selection=True)
 
 def open_mapping_window(excel_headers, on_done):
+    messagebox.showinfo(
+    "DEBUG",
+    "Excel seçildi.\nKolon eşleştirme penceresi açılıyor."
+)
     win = tk.Toplevel(root)
-    win.title("Excel Kolon Eşleştirme")
+
+    # 🔥 EXE + WINDOWS İÇİN ZORUNLU
+    win.withdraw()          # önce gizle
+    win.transient(root)
     win.grab_set()
+    win.lift()
+    win.focus_force()
+
+    win.title("Excel Kolon Eşleştirme")
+    win.geometry("520x500")
+
+    # 🔥 sonra göster
+    win.deiconify()
 
     tk.Label(
         win,
@@ -561,17 +576,12 @@ def select_excel_file():
     def on_mapping_done(mapping):
         global devices, excel_mapping
         excel_mapping = mapping
-
         devices = load_devices_from_excel(excel_path, excel_mapping)
         save_devices(devices)
         refresh_device_list()
 
-    # 🔴 BU SATIR MUTLAKA FONKSİYONUN İÇİNDE OLACAK
-    root.after(
-        200,
-        lambda: open_mapping_window(headers, on_mapping_done)
-    )
-
+    # 🔥 EXE FIX
+    root.after_idle(lambda: open_mapping_window(headers, on_mapping_done))
 # ---------------- DEVICE LIST ----------------
 def extend_selection(direction):
     items = device_tree.get_children()
