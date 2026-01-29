@@ -573,9 +573,11 @@ def select_excel_file():
     messagebox.showinfo("DEBUG", "Excel dosyası seçildi")
 
     try:
-        import pandas as pd
-        df = pd.read_excel(excel_path)
-        headers = list(df.columns)
+        from openpyxl import load_workbook
+
+        wb = load_workbook(excel_path, read_only=True)
+        ws = wb.active
+        headers = [cell.value for cell in ws[1] if cell.value]
 
     except Exception as e:
         messagebox.showerror(
