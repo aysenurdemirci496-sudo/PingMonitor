@@ -1238,8 +1238,9 @@ def show_column_menu(event, col):
         )
         menu.add_command(
             label="Filtreyi Temizle",
-            command=clear_all_filters
+            command=lambda: clear_single_filter(COLUMN_TO_FIELD[col])
         )
+   
 
     menu.tk_popup(event.x_root, event.y_root)
     menu.grab_release()

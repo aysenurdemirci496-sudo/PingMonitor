@@ -37,9 +37,16 @@ def load_devices():
     return []
 
 
-def load_devices_from_excel(path, mapping):
+def load_devices_from_excel(path, mapping=None, parent=None):
     import pandas as pd
+    if mapping is None:
+        headers = list(df.columns)
 
+        from excel_mapping_ui import show_mapping_window
+        mapping = show_mapping_window(headers, parent)
+
+        if not mapping:
+            return []
     df = pd.read_excel(path)
     devices = []
 
