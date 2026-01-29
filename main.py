@@ -566,10 +566,11 @@ def select_excel_file():
         save_devices(devices)
         refresh_device_list()
 
+    # 🔴 BU SATIR MUTLAKA FONKSİYONUN İÇİNDE OLACAK
     root.after(
-    100,
-    lambda: open_mapping_window(headers, on_mapping_done)
-)
+        200,
+        lambda: open_mapping_window(headers, on_mapping_done)
+    )
 
 # ---------------- DEVICE LIST ----------------
 def extend_selection(direction):
