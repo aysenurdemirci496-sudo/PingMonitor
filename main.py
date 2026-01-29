@@ -457,29 +457,26 @@ def toggle_ping():
 
 
 def refresh_from_excel():
+    global devices
+
     if not excel_path:
         messagebox.showwarning("Excel", "Önce Excel dosyası seçin")
         return
-    global devices
-    bulk_status_label.config(text="")
 
-    excel_devices = load_devices_from_excel(
-        excel_path,
-        mapping=None,          # ⬅️ burası mapping UI’yi tetikler
-        parent=root            # ⬅️ Mac için şart
-    )
     if not excel_mapping:
         messagebox.showwarning(
             "Excel Eşleştirme Yok",
-            "Önce Excel Seç butonundan dosya ve kolon eşleştirmesi yapmalısın."
+            "Önce Excel Seç butonundan kolon eşleştirmesi yapmalısın."
         )
         return
+
+    bulk_status_label.config(text="")
 
     excel_devices = load_devices_from_excel(excel_path, excel_mapping)
     merged = []
 
     for ex in excel_devices:
-        old = next((d for d in devices if d["ip"] == ex["ip"]), None)
+        old = next((d for d in devices if d["ip"] == ex.get("ip")), None)
         if old:
             merged.append(old)
         else:
