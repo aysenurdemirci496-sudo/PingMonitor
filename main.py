@@ -566,7 +566,10 @@ def select_excel_file():
         save_devices(devices)
         refresh_device_list()
 
-    open_mapping_window(headers, on_mapping_done)
+    root.after(
+    100,
+    lambda: open_mapping_window(headers, on_mapping_done)
+)
 
 # ---------------- DEVICE LIST ----------------
 def extend_selection(direction):
@@ -888,6 +891,9 @@ def open_add_device_window():
         return
 
     win = tk.Toplevel(root)
+    win.transient(root)   # 🔴 KRİTİK
+    win.grab_set()
+    win.focus_force()
     win.title("Yeni Cihaz Ekle")
     win.resizable(False, False)
     win.grab_set()
