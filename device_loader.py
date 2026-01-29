@@ -37,45 +37,21 @@ def load_devices():
     return []
 
 
-def load_devices_from_excel(xlsx_file=DEVICES_XLSX):
+def load_devices_from_excel(path, mapping):
+    import pandas as pd
+
+    df = pd.read_excel(path)
     devices = []
 
-    if not os.path.exists(xlsx_file):
-        return devices
+    for _, row in df.iterrows():
+        device = {}
 
-    wb = load_workbook(xlsx_file)
-    ws = wb.active
+        for field, header in mapping.items():
+            device[field] = row.get(header)
 
-    for row in ws.iter_rows(min_row=2, values_only=True):
-        (
-            name,
-            ip,
-            device,
-            model,
-            mac,
-            location,
-            unit,
-            description
-        ) = row[:8]
-
-        # 🔴 SADECE IP ZORUNLU
-        if not ip:
-            continue
-
-        devices.append({
-            # 🔹 Name yoksa IP’yi name olarak kullan
-            "name": str(name) if name else str(ip),
-            "ip": str(ip),
-            "device": device or "",
-            "model": model or "",
-            "mac": mac or "",
-            "location": location or "",
-            "unit": unit or "",
-            "description": description or ""
-        })
+        devices.append(device)
 
     return devices
-
 
 def save_devices(devices):
     with open(DEVICES_JSON, "w", encoding="utf-8") as f:

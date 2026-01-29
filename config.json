@@ -1,7 +1,3 @@
 {
-  "excel_file": "devices.xlsx",
-  "columns": {
-    "name": "name",
-    "ip": "ip"
-  }
+  "excel_path": "/Users/aysenurdemirci/PingMonitor/devices.xlsx"
 }

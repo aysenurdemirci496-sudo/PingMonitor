@@ -9,6 +9,10 @@ from datetime import datetime
 from tkinter import messagebox
 
 from device_loader import load_devices, load_devices_from_excel, save_devices
+from tkinter import filedialog
+import json
+import os
+
 
 
 # ---------------- PLATFORM ----------------
@@ -16,15 +20,30 @@ IS_WINDOWS = platform.system().lower() == "windows"
 FONT_NAME = "Segoe UI" if IS_WINDOWS else "Helvetica"
 
 # ---------------- GLOBAL STATE ----------------
-
+CONFIG_FILE = "config.json"
+excel_path = None
+excel_mapping = None
+bulk_total = 0
+bulk_done = 0
 PAGE_SIZE = 100
 current_page = 1
 total_pages = 1
+REQUIRED_FIELDS = [
+    "ip",
+    "device",
+    "name",
+    "model",
+    "mac",
+    "location",
+    "unit",
+    "description"
+]
 COLUMN_WIDTHS = {
     "Cihaz": 150,
     "IP": 130,
     "Ping (ms)": 100,
     "Son Ping": 170,
+    "Device Name": 160,   # 👈 EKLE
     "Model": 120,
     "MAC": 160,
     "Location": 140,
@@ -33,6 +52,7 @@ COLUMN_WIDTHS = {
 }
 current_sort_column = None
 current_sort_reverse = False
+
 def update_column_headers():
     for col in cols:
         text = col
@@ -48,6 +68,21 @@ ping_thread = None
 ui_queue = queue.Queue()
 started_from_entry = False
 
+def update_column_headers():
+    for col, field in COLUMN_TO_FIELD.items():
+        text = col
+
+        # 🔍 Filtre aktif mi?
+        if active_filters.get(field):
+            text += " 🔍"
+
+        # ⬆⬇ sıralama oku
+        if col == current_sort_column:
+            text += " ▼" if current_sort_reverse else " ▲"
+        else:
+            text += " ▼"
+
+        device_tree.heading(col, text=text)
 
 def update_tree_item_for_ip(ip):
     for item in device_tree.get_children():
@@ -66,6 +101,7 @@ def update_tree_item_for_ip(ip):
                     device.get("ip", ""),
                     latency_txt,
                     device.get("last_ping") or "-",
+                    device.get("name", ""),   # 👈 EKLE
                     device.get("model", ""),
                     device.get("mac", ""),
                     device.get("location", ""),
@@ -205,10 +241,28 @@ def ip_to_tuple(ip):
     except:
         return (0, 0, 0, 0)
 
+def load_config():
+    global excel_path
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            excel_path = data.get("excel_path")
+
+
+def save_config():
+    with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+        json.dump(
+            {"excel_path": excel_path},
+            f,
+            ensure_ascii=False,
+            indent=2
+        )
+
 # ---------------- FILTER STATE ----------------
 FILTERABLE_FIELDS = {
     "device": "Cihaz",
-    "ip": "IP",           
+    "ip": "IP",
+    "name": "Device Name",   # 👈 EKLE
     "model": "Model",
     "mac": "MAC",
     "location": "Location",
@@ -217,7 +271,8 @@ FILTERABLE_FIELDS = {
 }
 COLUMN_TO_FIELD = {
     "Cihaz": "device",
-    "IP": "ip",            
+    "IP": "ip",
+    "Device Name": "name",   # 👈 EKLE
     "Model": "model",
     "MAC": "mac",
     "Location": "location",
@@ -230,6 +285,7 @@ cols = (
     "IP",
     "Ping (ms)",
     "Son Ping",
+    "Device Name",   # 👈 YENİ
     "Model",
     "MAC",
     "Location",
@@ -295,7 +351,15 @@ def process_ui_queue():
 
         # 🟢 TOPLU PING
         elif item_type == "BULK":
-            ms = payload
+            global bulk_done
+
+            bulk_done += 1   # 🔥 BAŞARILI / BAŞARISIZ FARK ETMEZ
+
+            bulk_status_label.config(
+                text=f"Toplu Ping: {bulk_done} / {bulk_total}"
+            )
+
+            ms = payload  # None olabilir, sorun değil
 
             for d in devices:
                 if d["ip"] == ip:
@@ -316,13 +380,19 @@ def process_ui_queue():
             start_btn.config(state=tk.NORMAL)
             refresh_btn.config(state=tk.NORMAL)
             add_btn.config(state=tk.NORMAL)
+            bulk_status_label.config(
+            text=f"Toplu Ping tamamlandı ({bulk_total} / {bulk_total})"
+            )
+              # ⏱ 3 saniye sonra temizle
+            root.after(5000, lambda: bulk_status_label.config(text=""))
+  
 
     root.after(30, process_ui_queue)
 
 # ---------------- ACTIONS ----------------
 def start_ping(event=None):
     global is_running, current_ip, ping_thread, started_from_entry
-
+    bulk_status_label.config(text="")
     ip = ip_entry.get().strip()
     if not ip:
         return
@@ -376,8 +446,17 @@ def toggle_ping():
 
 def refresh_from_excel():
     global devices
+    bulk_status_label.config(text="")
 
-    excel_devices = load_devices_from_excel()
+    excel_devices =load_devices_from_excel(excel_path)
+    if not excel_mapping:
+        messagebox.showwarning(
+            "Excel Eşleştirme Yok",
+            "Önce Excel Seç butonundan dosya ve kolon eşleştirmesi yapmalısın."
+        )
+        return
+
+    excel_devices = load_devices_from_excel(excel_path, excel_mapping)
     merged = []
 
     for ex in excel_devices:
@@ -395,6 +474,83 @@ def refresh_from_excel():
     devices = merged
     save_devices(devices)
     refresh_device_list(keep_selection=True)
+
+def open_mapping_window(excel_headers, on_done):
+    win = tk.Toplevel(root)
+    win.title("Excel Kolon Eşleştirme")
+    win.grab_set()
+
+    tk.Label(
+        win,
+        text="Excel kolonlarını uygulama alanlarıyla eşleştir",
+        font=(FONT_NAME, 11, "bold")
+    ).pack(pady=10)
+
+    mapping_vars = {}
+
+    frame = tk.Frame(win)
+    frame.pack(padx=10, pady=10)
+
+    for header in excel_headers:
+        row = tk.Frame(frame)
+        row.pack(fill=tk.X, pady=3)
+
+        tk.Label(row, text=header, width=25, anchor="w").pack(side=tk.LEFT)
+
+        var = tk.StringVar(value="")
+        combo = ttk.Combobox(
+            row,
+            textvariable=var,
+            values=[""] + REQUIRED_FIELDS,
+            state="readonly",
+            width=20
+        )
+        combo.pack(side=tk.LEFT)
+
+        mapping_vars[header] = var
+
+    def apply():
+        mapping = {}
+        for header, var in mapping_vars.items():
+            if var.get():
+                mapping[var.get()] = header
+
+        if "ip" not in mapping:
+            messagebox.showerror("Hata", "IP alanı mutlaka eşleştirilmeli")
+            return
+
+        win.destroy()
+        on_done(mapping)
+
+    tk.Button(win, text="Tamam", command=apply).pack(pady=10)
+
+def select_excel_file():
+    global excel_path
+
+    path = filedialog.askopenfilename(
+        title="Excel dosyasını seç",
+        filetypes=[("Excel Files", "*.xlsx *.xls")]
+    )
+
+    if not path:
+        return
+
+    excel_path = path
+    save_config()
+
+    import pandas as pd
+    df = pd.read_excel(excel_path)
+    headers = list(df.columns)
+
+    def on_mapping_done(mapping):
+        global devices, excel_mapping
+        excel_mapping = mapping
+
+        devices = load_devices_from_excel(excel_path, excel_mapping)
+        save_devices(devices)
+        refresh_device_list()
+
+    open_mapping_window(headers, on_mapping_done)
 
 # ---------------- DEVICE LIST ----------------
 def extend_selection(direction):
@@ -425,6 +581,16 @@ def extend_selection(direction):
     device_tree.focus(new_item)
     device_tree.see(new_item)
 
+    return "break"
+
+def select_all_rows(event=None):
+    items = device_tree.get_children()
+    if not items:
+        return "break"
+
+    device_tree.selection_set(items)
+    device_tree.focus(items[0])
+    device_tree.see(items[0])
     return "break"
 
     
@@ -507,6 +673,7 @@ def refresh_device_list(keep_selection=False):
                 d.get("ip", ""),
                 latency_txt,
                 d.get("last_ping") or "-",
+                d.get("name", ""),     # 👈 DEVICE NAME
                 d.get("model", ""),
                 d.get("mac", ""),
                 d.get("location", ""),
@@ -535,6 +702,8 @@ def refresh_device_list(keep_selection=False):
         write_ip_from_selection()
 
     update_page_label()
+    device_tree.update_idletasks()
+    
 
 
 def write_ip_from_selection():
@@ -602,7 +771,7 @@ def show_sort_menu(event, col):
 
 # ---------------- CONTEXT MENU ----------------
 def start_bulk_ping():
-    global is_bulk_running
+    global is_bulk_running, bulk_total, bulk_done
 
     if is_running:
         messagebox.showwarning(
@@ -614,22 +783,75 @@ def start_bulk_ping():
     if is_bulk_running:
         return
 
-    selected = get_selected_devices()
+    devices_to_ping = devices[:]   # 🔥 TÜM CİHAZLAR
 
-    if not selected:
-        messagebox.showinfo("Bilgi", "Önce bir veya daha fazla cihaz seçmelisin")
+    if not devices_to_ping:
+        messagebox.showinfo("Bilgi", "Listede cihaz yok")
         return
 
     is_bulk_running = True
 
-    # 🔒 Butonları kilitle
+    bulk_total = len(devices_to_ping)
+    bulk_done = 0
+
+    bulk_status_label.config(
+        text=f"Toplu Ping: 0 / {bulk_total}"
+    )
+
     start_btn.config(state=tk.DISABLED)
     refresh_btn.config(state=tk.DISABLED)
     add_btn.config(state=tk.DISABLED)
 
     threading.Thread(
         target=bulk_ping_worker,
-        args=(selected,),
+        args=(devices_to_ping,),
+        daemon=True
+    ).start()
+
+def start_bulk_ping_all_filtered():
+    global is_bulk_running, bulk_total, bulk_done
+
+    if is_running:
+        messagebox.showwarning(
+            "Uyarı",
+            "Tekli ping çalışırken toplu ping başlatılamaz."
+        )
+        return
+
+    if is_bulk_running:
+        return
+
+    # 🔴 SAYFAYA DEĞİL → TÜM FİLTRELİ CİHAZLAR
+    filtered_devices = [
+        d for d in devices
+        if device_matches_filters(d)
+    ]
+
+    if not filtered_devices:
+        messagebox.showinfo(
+            "Bilgi",
+            "Filtrelere uyan cihaz bulunamadı"
+        )
+        return
+
+    # 🔥 KRİTİK SATIRLAR (SENDEN EKSİK OLANLAR)
+    bulk_total = len(filtered_devices)
+    bulk_done = 0
+
+    bulk_status_label.config(
+        text=f"Toplu Ping: 0 / {bulk_total}"
+    )
+
+    is_bulk_running = True
+
+    # 🔒 UI kilidi
+    start_btn.config(state=tk.DISABLED)
+    refresh_btn.config(state=tk.DISABLED)
+    add_btn.config(state=tk.DISABLED)
+
+    threading.Thread(
+        target=bulk_ping_worker,
+        args=(filtered_devices,),
         daemon=True
     ).start()
 
@@ -901,6 +1123,7 @@ def open_filter_window(field):
                 active_filters[field].add(val)
 
         refresh_device_list()
+        update_column_headers()
         win.destroy()
 
     tk.Button(bottom, text="OK", width=10, command=apply_filters).pack(side=tk.RIGHT, padx=10)
@@ -962,30 +1185,41 @@ def clear_all_filters():
 
     # 4️⃣ listeyi yenile
     refresh_device_list()
+    update_column_headers()
+
+def clear_single_filter(field):
+    global current_page
+
+    active_filters[field].clear()
+    current_page = 1
+    refresh_device_list()
+    update_column_headers()
 
 def show_column_menu(event, col):
     menu = tk.Menu(root, tearoff=0)
 
-    # 🔼🔽 SIRALAMA (HER SÜTUN)
     menu.add_command(
-        label="🔼 A'dan Z'ye Sırala",
+        label="A'dan Z'ye Sırala",
         command=lambda: sort_devices_by_column(col, reverse=False)
     )
     menu.add_command(
-        label="🔽 Z'den A'ya Sırala",
+        label="Z'den A'ya Sırala",
         command=lambda: sort_devices_by_column(col, reverse=True)
     )
 
-    # 🔎 FİLTRE (IP DAHİL)
     if col in COLUMN_TO_FIELD:
         menu.add_separator()
         menu.add_command(
-            label="🔎 Filtrele",
+            label="Filtrele",
             command=lambda: open_filter_window(COLUMN_TO_FIELD[col])
+        )
+        menu.add_command(
+            label="Filtreyi Temizle",
+            command=clear_all_filters
         )
 
     menu.tk_popup(event.x_root, event.y_root)
-
+    menu.grab_release()
 
 def show_context_menu(event):
     # Sağ tık yapılan satırı bul
@@ -1049,6 +1283,14 @@ add_btn = tk.Button(
 )
 add_btn.pack(side=tk.LEFT, padx=5)
 
+excel_btn = tk.Button(
+    left_controls,
+    text="📂 Excel Seç",
+    width=14,
+    command=select_excel_file
+)
+excel_btn.pack(side=tk.LEFT, padx=5)
+
 tk.Label(right_controls, text="Ara:", font=(FONT_NAME, 11)).pack(side=tk.LEFT, padx=(0, 5))
 
 search_entry = tk.Entry(right_controls, width=25, font=(FONT_NAME, 11))
@@ -1084,6 +1326,7 @@ main.add(right)
 tree_container = tk.Frame(right)
 tree_container.pack(fill=tk.BOTH, expand=True)
 
+
 # 🔹 Dikey scrollbar
 tree_scroll = ttk.Scrollbar(tree_container, orient=tk.VERTICAL)
 tree_scroll.pack(side=tk.RIGHT, fill=tk.Y)
@@ -1093,14 +1336,17 @@ tree_scroll_x = ttk.Scrollbar(tree_container, orient=tk.HORIZONTAL)
 tree_scroll_x.pack(side=tk.BOTTOM, fill=tk.X)
 
 # 🔹 Treeview
+
 device_tree = ttk.Treeview(
     tree_container,
     columns=cols,
     show="headings",
-    selectmode="extended",   # ← BU SATIR ŞART
+    selectmode="extended",
     yscrollcommand=tree_scroll.set,
-    xscrollcommand=tree_scroll_x.set
+    xscrollcommand=tree_scroll_x.set,
+    takefocus=False
 )
+
 def on_heading_click(event):
     region = device_tree.identify_region(event.x, event.y)
     if region != "heading":
@@ -1111,6 +1357,7 @@ def on_heading_click(event):
     col_name = cols[col_index]
 
     show_column_menu(event, col_name)
+    return "break"  
 
 # 🔑 Treeview başlıklarını TANIMLA
 for c in cols:
@@ -1129,11 +1376,18 @@ tree_scroll_x.config(command=device_tree.xview)
 
 # 🔹 Column genişlikleri
 for c in cols:
-    device_tree.column(c, width=COLUMN_WIDTHS[c])
+    device_tree.column(
+        c,
+        width=COLUMN_WIDTHS[c],
+        minwidth=COLUMN_WIDTHS[c],
+        stretch=False
+    )
 
 device_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 device_tree.update_idletasks()
 
+bulk_status_label = tk.Label(right, text="", font=(FONT_NAME, 10))
+bulk_status_label.pack(fill=tk.X, padx=10, pady=(0, 5))
 # ---------------- PAGINATION UI ----------------
 pagination = tk.Frame(right)
 pagination.pack(fill=tk.X, pady=5)
@@ -1162,13 +1416,17 @@ tk.Button(pagination, text="◀ Önceki", command=prev_page).pack(side=tk.LEFT)
 tk.Button(pagination, text="Sonraki ▶", command=next_page).pack(side=tk.LEFT)
 
 # BINDINGS
-device_tree.bind("<Button-1>", on_heading_click, add="+")
+device_tree.bind("<Button-1>", on_heading_click)
 device_tree.bind("<<TreeviewSelect>>", on_tree_select)
 device_tree.bind("<Double-1>", on_double_click)
 device_tree.bind("<Up>", lambda e: on_tree_arrow(-1))
 device_tree.bind("<Down>", lambda e: on_tree_arrow(1))
 device_tree.bind("<Shift-Up>", lambda e: extend_selection(-1))
 device_tree.bind("<Shift-Down>", lambda e: extend_selection(1))
+device_tree.bind("<Control-Up>", lambda e: extend_selection(-1))
+device_tree.bind("<Control-Down>", lambda e: extend_selection(1))
+device_tree.bind("<Control-a>", select_all_rows)
+device_tree.bind("<Command-a>", select_all_rows)  # macOS için
 
 def on_mousewheel(event):
     device_tree.yview_scroll(int(-1*(event.delta/120)), "units")
@@ -1206,6 +1464,10 @@ context_menu.add_command(
     label="📡 Seçilenlere Toplu Ping",
     command=start_bulk_ping
 )
+context_menu.add_command(
+    label="🌐 Filtrelenmiş TÜM Cihazlara Ping",
+    command=start_bulk_ping_all_filtered
+)
 context_menu.add_separator()
 
 # 🔴 YENİ EKLENEN
@@ -1222,7 +1484,14 @@ context_menu.add_command(
 )
 
 # ---------------- START ----------------
+load_config()
+
 devices = load_devices()
-refresh_device_list()
+
+if excel_path and excel_mapping:
+    refresh_from_excel()
+else:
+    refresh_device_list()
+
 root.after(100, process_ui_queue)
 root.mainloop()
