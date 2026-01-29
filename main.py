@@ -132,18 +132,30 @@ def single_ping(ip, timeout=2):
     try:
         if IS_WINDOWS:
             cmd = ["ping", "-n", "1", "-w", str(timeout * 1000), ip]
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                startupinfo=startupinfo,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
         else:
             cmd = ["ping", "-c", "1", ip]
+            proc = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True
+            )
 
-        output = subprocess.check_output(
-            cmd,
-            stderr=subprocess.STDOUT,
-            text=True
-        )
-
+        output, _ = proc.communicate(timeout=timeout + 1)
         return extract_ping_ms(output)
 
-    except subprocess.CalledProcessError:
+    except Exception:
         return None
     
 from concurrent.futures import ThreadPoolExecutor
@@ -445,10 +457,17 @@ def toggle_ping():
 
 
 def refresh_from_excel():
+    if not excel_path:
+        messagebox.showwarning("Excel", "Önce Excel dosyası seçin")
+        return
     global devices
     bulk_status_label.config(text="")
 
-    excel_devices =load_devices_from_excel(excel_path)
+    excel_devices = load_devices_from_excel(
+        excel_path,
+        mapping=None,          # ⬅️ burası mapping UI’yi tetikler
+        parent=root            # ⬅️ Mac için şart
+    )
     if not excel_mapping:
         messagebox.showwarning(
             "Excel Eşleştirme Yok",
@@ -783,10 +802,14 @@ def start_bulk_ping():
     if is_bulk_running:
         return
 
-    devices_to_ping = devices[:]   # 🔥 TÜM CİHAZLAR
+    # ✅ SADECE SEÇİLENLER
+    devices_to_ping = get_selected_devices()
 
     if not devices_to_ping:
-        messagebox.showinfo("Bilgi", "Listede cihaz yok")
+        messagebox.showinfo(
+            "Bilgi",
+            "Lütfen en az bir cihaz seçin"
+        )
         return
 
     is_bulk_running = True

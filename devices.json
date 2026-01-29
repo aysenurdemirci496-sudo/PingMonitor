@@ -8,8 +8,8 @@
     "location": "fdg",
     "unit": "",
     "description": "",
-    "latency": 86.131,
-    "last_ping": "2026-01-29 11:42:49",
+    "latency": 98.21,
+    "last_ping": "2026-01-29 13:31:03",
     "status": "NORMAL",
     "selected": false
   },
@@ -23,7 +23,7 @@
     "unit": "fdg",
     "description": "qaaa",
     "latency": null,
-    "last_ping": "2026-01-29 11:43:00",
+    "last_ping": "2026-01-29 13:28:24",
     "status": "DOWN",
     "selected": true
   },
@@ -36,9 +36,9 @@
     "location": "",
     "unit": "fgv",
     "description": "cxv",
-    "latency": 53.836,
-    "last_ping": "2026-01-29 11:42:49",
-    "status": "NORMAL",
+    "latency": 136.362,
+    "last_ping": "2026-01-29 13:31:17",
+    "status": "SLOW",
     "selected": true
   },
   {
@@ -51,7 +51,7 @@
     "unit": "bv",
     "description": "",
     "latency": null,
-    "last_ping": "2026-01-29 11:43:00",
+    "last_ping": "2026-01-29 13:31:28",
     "status": "DOWN",
     "selected": true
   },
@@ -64,9 +64,9 @@
     "location": "",
     "unit": "",
     "description": "fdg",
-    "latency": 99.336,
-    "last_ping": "2026-01-29 11:42:49",
-    "status": "NORMAL",
+    "latency": 127.857,
+    "last_ping": "2026-01-29 13:31:17",
+    "status": "SLOW",
     "selected": true
   },
   {
@@ -78,9 +78,9 @@
     "location": "dfg",
     "unit": "",
     "description": "",
-    "latency": null,
-    "last_ping": "2026-01-29 11:43:00",
-    "status": "DOWN",
+    "latency": 726.937,
+    "last_ping": "2026-01-29 13:31:18",
+    "status": "VERY_SLOW",
     "selected": false
   },
   {
@@ -92,9 +92,9 @@
     "location": "",
     "unit": "",
     "description": "",
-    "latency": 48.897,
-    "last_ping": "2026-01-29 11:42:49",
-    "status": "FAST",
+    "latency": 73.969,
+    "last_ping": "2026-01-29 13:31:17",
+    "status": "NORMAL",
     "selected": true
   },
   {
@@ -106,8 +106,8 @@
     "location": "",
     "unit": "",
     "description": "",
-    "latency": 65.986,
-    "last_ping": "2026-01-29 11:42:49",
+    "latency": 61.712,
+    "last_ping": "2026-01-29 13:28:13",
     "status": "NORMAL",
     "selected": false
   },
@@ -120,8 +120,8 @@
     "location": "",
     "unit": "",
     "description": "",
-    "latency": 46.0,
-    "last_ping": "2026-01-29 11:42:49",
+    "latency": 41.57,
+    "last_ping": "2026-01-29 13:28:13",
     "status": "FAST"
   },
   {
@@ -134,7 +134,7 @@
     "unit": "",
     "description": "",
     "latency": null,
-    "last_ping": "2026-01-29 11:43:00",
+    "last_ping": "2026-01-29 13:28:24",
     "status": "DOWN"
   },
   {
@@ -147,7 +147,7 @@
     "unit": "",
     "description": "",
     "latency": null,
-    "last_ping": "2026-01-29 11:43:00",
+    "last_ping": "2026-01-29 13:28:24",
     "status": "DOWN"
   },
   {
@@ -160,7 +160,7 @@
     "unit": "",
     "description": "",
     "latency": null,
-    "last_ping": "2026-01-29 11:43:00",
+    "last_ping": "2026-01-29 13:28:24",
     "status": "DOWN"
   },
   {
@@ -173,7 +173,7 @@
     "unit": "",
     "description": "",
     "latency": null,
-    "last_ping": "2026-01-29 11:43:00",
+    "last_ping": "2026-01-29 13:28:24",
     "status": "DOWN"
   },
   {
@@ -186,7 +186,7 @@
     "unit": "",
     "description": "",
     "latency": null,
-    "last_ping": "2026-01-29 11:43:00",
+    "last_ping": "2026-01-29 13:28:24",
     "status": "DOWN"
   },
   {
@@ -199,7 +199,7 @@
     "unit": "",
     "description": "",
     "latency": null,
-    "last_ping": "2026-01-29 11:43:00",
+    "last_ping": "2026-01-29 13:28:24",
     "status": "DOWN"
   },
   {
@@ -225,8 +225,8 @@
     "location": "",
     "unit": "",
     "description": "",
-    "latency": 53.319,
-    "last_ping": "2026-01-29 11:42:49",
+    "latency": 56.053,
+    "last_ping": "2026-01-29 13:28:14",
     "status": "NORMAL"
   },
   {
@@ -238,8 +238,8 @@
     "location": "",
     "unit": "",
     "description": "",
-    "latency": 67.48,
-    "last_ping": "2026-01-29 11:42:49",
+    "latency": 52.525,
+    "last_ping": "2026-01-29 13:28:14",
     "status": "NORMAL"
   },
   {
@@ -251,8 +251,8 @@
     "location": "",
     "unit": "",
     "description": "",
-    "latency": 52.155,
-    "last_ping": "2026-01-29 11:42:49",
+    "latency": 52.722,
+    "last_ping": "2026-01-29 13:28:14",
     "status": "NORMAL"
   },
   {
@@ -264,8 +264,8 @@
     "location": "",
     "unit": "",
     "description": "",
-    "latency": 64.564,
-    "last_ping": "2026-01-29 11:42:49",
+    "latency": 55.208,
+    "last_ping": "2026-01-29 13:28:14",
     "status": "NORMAL"
   },
   {
@@ -277,8 +277,8 @@
     "location": "",
     "unit": "",
     "description": "",
-    "latency": 70.319,
-    "last_ping": "2026-01-29 11:42:50",
+    "latency": 58.573,
+    "last_ping": "2026-01-29 13:28:14",
     "status": "NORMAL"
   },
   {
@@ -290,8 +290,8 @@
     "location": "",
     "unit": "",
     "description": "",
-    "latency": 56.588,
-    "last_ping": "2026-01-29 11:42:50",
+    "latency": 68.748,
+    "last_ping": "2026-01-29 13:28:14",
     "status": "NORMAL"
   },
   {
@@ -304,7 +304,7 @@
     "unit": "",
     "description": "",
     "latency": null,
-    "last_ping": "2026-01-29 11:43:01",
+    "last_ping": "2026-01-29 13:28:25",
     "status": "DOWN"
   },
   {
@@ -316,8 +316,8 @@
     "location": "",
     "unit": "",
     "description": "",
-    "latency": 92.316,
-    "last_ping": "2026-01-29 11:43:00",
+    "latency": 80.76,
+    "last_ping": "2026-01-29 13:28:24",
     "status": "NORMAL"
   }
 ]
