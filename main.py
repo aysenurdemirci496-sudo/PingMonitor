@@ -569,9 +569,22 @@ def select_excel_file():
     excel_path = path
     save_config()
 
-    import pandas as pd
-    df = pd.read_excel(excel_path)
-    headers = list(df.columns)
+    # 🔴 DEBUG: buraya geliyor mu?
+    messagebox.showinfo("DEBUG", "Excel dosyası seçildi")
+
+    try:
+        import pandas as pd
+        df = pd.read_excel(excel_path)
+        headers = list(df.columns)
+
+    except Exception as e:
+        messagebox.showerror(
+            "Excel Okuma Hatası",
+            f"Excel okunamadı:\n\n{e}"
+        )
+        return
+
+    messagebox.showinfo("DEBUG", "Excel okundu, eşleştirme açılıyor")
 
     def on_mapping_done(mapping):
         global devices, excel_mapping
@@ -580,7 +593,6 @@ def select_excel_file():
         save_devices(devices)
         refresh_device_list()
 
-    # 🔥 EXE FIX
     root.after_idle(lambda: open_mapping_window(headers, on_mapping_done))
 # ---------------- DEVICE LIST ----------------
 def extend_selection(direction):
