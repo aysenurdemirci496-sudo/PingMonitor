@@ -100,3 +100,10 @@ def update_device_in_excel(old_ip, updated_device, excel_path):
 def save_devices(devices):
     with open("devices.json", "w", encoding="utf-8") as f:
         json.dump(devices, f, indent=2, ensure_ascii=False)
+
+
+def load_devices():
+    if not os.path.exists("devices.json"):
+        return []
+    with open("devices.json", "r", encoding="utf-8") as f:
+        return json.load(f)

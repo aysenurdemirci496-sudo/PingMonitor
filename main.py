@@ -7,6 +7,7 @@ import platform
 import re
 from datetime import datetime
 from tkinter import messagebox
+from device_loader import load_devices
 from device_loader import load_devices_from_excel, save_devices
 from tkinter import filedialog
 import json
@@ -993,7 +994,7 @@ def open_add_device_window():
 
         # ✅ 1️⃣ Excel'e yaz
         from device_loader import add_device_to_excel
-        add_device_to_excel(new_device)
+        add_device_to_excel(new_device, excel_path)
 
         # ✅ 2️⃣ Excel'den TEKRAR OKU (tek gerçek kaynak)
         refresh_from_excel()
@@ -1559,8 +1560,24 @@ load_config()
 
 devices = []
 
+cached_devices = load_devices()
+
 if excel_path and excel_mapping:
-    devices = load_devices_from_excel(excel_path, excel_mapping)
+    excel_devices = load_devices_from_excel(excel_path, excel_mapping)
+
+    for ex in excel_devices:
+        cached = next((d for d in cached_devices if d.get("ip") == ex.get("ip")), None)
+
+        if cached:
+            ex["latency"] = cached.get("latency")
+            ex["last_ping"] = cached.get("last_ping")
+            ex["status"] = cached.get("status", "UNKNOWN")
+        else:
+            ex["latency"] = None
+            ex["last_ping"] = None
+            ex["status"] = "UNKNOWN"
+
+        devices.append(ex)
 
 refresh_device_list()
 root.after(100, process_ui_queue)
