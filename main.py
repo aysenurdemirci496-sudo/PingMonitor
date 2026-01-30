@@ -1518,7 +1518,20 @@ device_tree.bind("<Button-5>", lambda e: device_tree.yview_scroll(1, "units"))  
 
 device_tree.bind("<Button-3>", show_context_menu)
 device_tree.bind("<Button-2>", show_context_menu)
-device_tree.bind("<Control-Button-1>", show_context_menu)
+def ctrl_click_select(event):
+    row = device_tree.identify_row(event.y)
+    if not row:
+        return "break"
+
+    if row in device_tree.selection():
+        device_tree.selection_remove(row)
+    else:
+        device_tree.selection_add(row)
+
+    device_tree.focus(row)
+    return "break"
+
+device_tree.bind("<Control-Button-1>", ctrl_click_select)
 root.bind("<Shift-F10>", show_context_menu)
 
 
