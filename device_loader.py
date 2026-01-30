@@ -13,21 +13,24 @@ def load_devices_from_excel(path, mapping):
     if not path.lower().endswith((".xlsx", ".xlsm", ".xltx", ".xltm")):
         raise ValueError(f"Desteklenmeyen Excel formatı: {path}")
 
-def add_device_to_excel(device, excel_path):
+def add_device_to_excel(device, excel_path, excel_mapping):
+    from openpyxl import load_workbook
+
     wb = load_workbook(excel_path)
     ws = wb.active
 
-    ws.append([
-        device.get("name"),
-        device.get("ip"),
-        device.get("device"),
-        device.get("model"),
-        device.get("mac"),
-        device.get("location"),
-        device.get("unit"),
-        device.get("description")
-    ])
+    headers = [cell.value for cell in ws[1]]
+    header_index = {h: i for i, h in enumerate(headers)}
 
+    # boş bir satır hazırla
+    new_row = ["" for _ in headers]
+
+    for field, header in excel_mapping.items():
+        col_idx = header_index.get(header)
+        if col_idx is not None:
+            new_row[col_idx] = device.get(field, "")
+
+    ws.append(new_row)
     wb.save(excel_path)
 
 

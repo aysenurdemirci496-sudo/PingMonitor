@@ -982,7 +982,7 @@ def open_add_device_window():
 
         # ✅ 1️⃣ Excel'e yaz
         from device_loader import add_device_to_excel
-        add_device_to_excel(new_device, excel_path)
+        add_device_to_excel(new_device, excel_path, excel_mapping)
 
         # ✅ 2️⃣ Excel'den TEKRAR OKU (tek gerçek kaynak)
         refresh_from_excel()
@@ -1475,6 +1475,18 @@ pagination.pack(fill=tk.X, pady=5)
 page_label = tk.Label(pagination, text="Sayfa 1 / 1")
 page_label.pack(side=tk.LEFT, padx=10)
 
+# ---------------- FOOTER / SIGNATURE ----------------
+footer = tk.Frame(right)
+footer.pack(fill=tk.X, side=tk.BOTTOM, padx=8, pady=4)
+
+signature_label = tk.Label(
+    footer,
+    text="Anur",
+    font=(FONT_NAME, 9),
+    fg="#7f8c8d"   # gri – göz yormaz
+)
+signature_label.pack(side=tk.RIGHT)
+
 def update_page_label():
     page_label.config(text=f"Sayfa {current_page} / {total_pages}")
 
@@ -1588,7 +1600,6 @@ context_menu.add_command(
     command=clear_all_filters
 )
 
-# ---------------- START ----------------
 # ---------------- START ----------------
 load_config()
 
