@@ -254,17 +254,20 @@ def ip_to_tuple(ip):
         return (0, 0, 0, 0)
 
 def load_config():
-    global excel_path
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            path = data.get("excel_path")
+    global excel_path, excel_mapping
 
-            if path and os.path.exists(path):
-                excel_path = path
-            else:
-                excel_path = None
+    if not os.path.exists(CONFIG_FILE):
+        return
 
+    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    excel_path = data.get("excel_path")
+    excel_mapping = data.get("excel_mapping")
+
+    if not excel_path or not os.path.exists(excel_path):
+        excel_path = None
+        excel_mapping = None
 
 def save_config():
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
