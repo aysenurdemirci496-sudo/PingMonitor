@@ -1,3 +1,8 @@
 {
-  "excel_path": "/Users/aysenurdemirci/PingMonitor/devices.xlsx"
+  "excel_path": "...",
+  "excel_mapping": {
+    "ip": "IP",
+    "device": "Device",
+    "name": "Name"
+  }
 }

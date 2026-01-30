@@ -2,15 +2,13 @@ import json
 import os
 from openpyxl import load_workbook
 
-DEVICES_JSON = "devices.json"
+
 DEVICES_XLSX = "devices.xlsx"
 
 
 
-def add_device_to_excel(device):
-    from openpyxl import load_workbook
-
-    wb = load_workbook("devices.xlsx")
+def add_device_to_excel(device, excel_path):
+    wb = load_workbook(excel_path)
     ws = wb.active
 
     ws.append([
@@ -27,14 +25,7 @@ def add_device_to_excel(device):
     wb.save("devices.xlsx")
 
 
-def load_devices():
-    if os.path.exists(DEVICES_JSON):
-        try:
-            with open(DEVICES_JSON, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return []
-    return []
+
 
 
 def load_devices_from_excel(path, mapping):
@@ -77,16 +68,14 @@ def load_devices_from_excel(path, mapping):
         devices.append(device)
 
     return devices
-def save_devices(devices):
-    with open(DEVICES_JSON, "w", encoding="utf-8") as f:
-        json.dump(devices, f, indent=2, ensure_ascii=False)
 
 
-def update_device_in_excel(old_ip, updated_device, xlsx_file=DEVICES_XLSX):
-    if not os.path.exists(xlsx_file):
+
+def update_device_in_excel(old_ip, updated_device, excel_path):
+    if not os.path.exists(excel_path):
         return
 
-    wb = load_workbook(xlsx_file)
+    wb = load_workbook(excel_path)
     ws = wb.active
 
     for row in ws.iter_rows(min_row=2):
@@ -101,4 +90,4 @@ def update_device_in_excel(old_ip, updated_device, xlsx_file=DEVICES_XLSX):
             row[7].value = updated_device.get("description", "")
             break
 
-    wb.save(xlsx_file)
+    wb.save(excel_path)

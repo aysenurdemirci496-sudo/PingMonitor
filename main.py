@@ -8,7 +8,7 @@ import re
 from datetime import datetime
 from tkinter import messagebox
 
-from device_loader import load_devices, load_devices_from_excel, save_devices
+from device_loader import load_devices_from_excel, save_devices
 from tkinter import filedialog
 import json
 import os
@@ -254,17 +254,22 @@ def ip_to_tuple(ip):
         return (0, 0, 0, 0)
 
 def load_config():
-    global excel_path
+    global excel_path, excel_mapping
+
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
             excel_path = data.get("excel_path")
+            excel_mapping = data.get("excel_mapping")
 
 
 def save_config():
     with open(CONFIG_FILE, "w", encoding="utf-8") as f:
         json.dump(
-            {"excel_path": excel_path},
+            {
+                "excel_path": excel_path,
+                "excel_mapping": excel_mapping
+            },
             f,
             ensure_ascii=False,
             indent=2
@@ -459,36 +464,38 @@ def toggle_ping():
 def refresh_from_excel():
     global devices
 
-    if not excel_path:
-        messagebox.showwarning("Excel", "Önce Excel dosyası seçin")
-        return
-
-    if not excel_mapping:
+    # 1️⃣ Excel yolu veya kolon eşleştirme yoksa DUR
+    if not excel_path or not excel_mapping:
         messagebox.showwarning(
-            "Excel Eşleştirme Yok",
-            "Önce Excel Seç butonundan kolon eşleştirmesi yapmalısın."
+            "Excel",
+            "Excel dosyası veya kolon eşleştirmesi bulunamadı.\n"
+            "Lütfen önce 'Excel Seç' butonunu kullanın."
         )
         return
 
-    bulk_status_label.config(text="")
-
-    # 🔴 KRİTİK KISIM BURASI
     try:
+        # 2️⃣ Excel'den cihazları oku (HİÇBİR UI AÇMAZ)
         excel_devices = load_devices_from_excel(excel_path, excel_mapping)
+
     except Exception as e:
         messagebox.showerror(
             "Excel Okuma Hatası",
-            f"Excel okunamadı:\n{e}"
+            f"Excel okunurken hata oluştu:\n\n{e}"
         )
         return
 
+    # 3️⃣ Eski ping bilgilerini KORU, Excel verisiyle birleştir
     merged = []
 
     for ex in excel_devices:
-        old = next((d for d in devices if d["ip"] == ex.get("ip")), None)
+        old = next((d for d in devices if d.get("ip") == ex.get("ip")), None)
+
         if old:
+            # Excel'den gelen alanları güncelle
+            old.update(ex)
             merged.append(old)
         else:
+            # Yeni cihaz
             merged.append({
                 **ex,
                 "latency": None,
@@ -496,8 +503,11 @@ def refresh_from_excel():
                 "status": "UNKNOWN"
             })
 
+    # 4️⃣ RAM + JSON güncelle
     devices = merged
     save_devices(devices)
+
+    # 5️⃣ Listeyi yenile (seçimi koru)
     refresh_device_list(keep_selection=True)
 
 def open_mapping_window(excel_headers, on_done):
@@ -598,13 +608,16 @@ def select_excel_file():
     messagebox.showinfo("DEBUG", "Excel okundu, eşleştirme açılıyor")
 
     def on_mapping_done(mapping):
-        global devices, excel_mapping
+        global excel_mapping, devices
         excel_mapping = mapping
+        save_config()
+
         devices = load_devices_from_excel(excel_path, excel_mapping)
-        save_devices(devices)
         refresh_device_list()
 
-    root.after_idle(lambda: open_mapping_window(headers, on_mapping_done))
+    root.after(
+        0,
+        lambda: open_mapping_window(headers, on_mapping_done))
 # ---------------- DEVICE LIST ----------------
 def extend_selection(direction):
     items = device_tree.get_children()
@@ -984,9 +997,9 @@ def open_add_device_window():
         devices.append(new_device)
 
         from device_loader import add_device_to_excel
-        add_device_to_excel(new_device)
-
-        save_devices(devices)
+        devices.append(new_device)        # RAM
+        add_device_to_excel(new_device)   # EXCEL
+        save_devices(devices)             # JSON
         refresh_device_list(keep_selection=True)
 
         win.destroy()
@@ -1545,9 +1558,13 @@ context_menu.add_command(
 )
 
 # ---------------- START ----------------
+# ---------------- START ----------------
 load_config()
 
-devices = load_devices()
+devices = []
+
+if excel_path and excel_mapping:
+    devices = load_devices_from_excel(excel_path, excel_mapping)
 
 refresh_device_list()
 root.after(100, process_ui_queue)
