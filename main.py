@@ -1131,37 +1131,50 @@ def open_filter_window(field):
     canvas = tk.Canvas(list_container, borderwidth=0, highlightthickness=0)
     scrollbar = ttk.Scrollbar(list_container, orient="vertical", command=canvas.yview)
 
-    scroll_frame = tk.Frame(canvas)
-
-    scroll_frame.bind(
-        "<Configure>",
-        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-    )
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(2, 0))
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     canvas.configure(yscrollcommand=scrollbar.set)
 
+    scroll_frame = tk.Frame(canvas)
     window_id = canvas.create_window((0, 0), window=scroll_frame, anchor="nw")
 
-    # ✅ Canvas genişliği frame'e uysun
+    # ✅ Canvas genişliğini iç frame'e uydur
     def _resize_canvas(event):
         canvas.itemconfig(window_id, width=event.width)
 
     canvas.bind("<Configure>", _resize_canvas)
 
-    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+    # ✅ scrollregion + scrollbar thumb güncelle
+    def _update_scrollregion(event=None):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+        scrollbar.set(*canvas.yview())
 
-    # ================== ✅ WINDOWS MOUSE WHEEL (KESİN ÇALIŞIR) ==================
+    scroll_frame.bind("<Configure>", _update_scrollregion)
+
+    # ✅ Windows mousewheel scroll (Checkbox üstünde bile çalışır)
     def _on_mousewheel(event):
         if not canvas.winfo_exists():
             return "break"
 
-        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        delta = int(event.delta / 120)
+        if delta == 0:
+            delta = 1 if event.delta > 0 else -1
+
+        canvas.yview_scroll(-delta, "units")
         return "break"
 
-    # 🔥 Olayı hem canvas’a hem iç frame’e bind et
-    canvas.bind("<MouseWheel>", _on_mousewheel)
-    scroll_frame.bind("<MouseWheel>", _on_mousewheel)
+    # 🔥 Mousewheel'i pencereye bağla ki her yerde çalışsın
+    win.bind_all("<MouseWheel>", _on_mousewheel)
+
+    # pencere kapanınca bind_all temizle (yoksa tüm uygulama etkilenir)
+    def _cleanup_bindings():
+        try:
+            win.unbind_all("<MouseWheel>")
+        except Exception:
+            pass
+
+    win.protocol("WM_DELETE_WINDOW", lambda: ( _cleanup_bindings(), win.destroy() ))
 
     # ================== ALT OK BUTONU ==================
     bottom = tk.Frame(win)
@@ -1178,6 +1191,7 @@ def open_filter_window(field):
 
         refresh_device_list()
         update_column_headers()
+        _cleanup_bindings()
         win.destroy()
 
     tk.Button(bottom, text="OK", width=10, command=apply_filters).pack(side=tk.RIGHT, padx=10)
@@ -1192,8 +1206,10 @@ def open_filter_window(field):
     checkbuttons = {}
 
     def render_list():
+        # eski checkboxları sil
         for chk in checkbuttons.values():
             chk.destroy()
+
         checkbuttons.clear()
         vars_map.clear()
 
@@ -1210,8 +1226,8 @@ def open_filter_window(field):
             vars_map[val] = var
             checkbuttons[val] = chk
 
-        canvas.update_idletasks()
-        canvas.configure(scrollregion=canvas.bbox("all"))
+        win.update_idletasks()
+        _update_scrollregion()
 
     def select_all():
         for var in vars_map.values():
