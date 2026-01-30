@@ -1064,7 +1064,12 @@ def show_device_details():
         device["description"] = entries["Description"].get()
 
         from device_loader import update_device_in_excel
-        update_device_in_excel(old_ip, device)
+        update_device_in_excel(
+            old_ip,
+            device,
+            excel_path,
+            excel_mapping
+        )
 
         save_devices(devices)
         refresh_device_list(keep_selection=True)
