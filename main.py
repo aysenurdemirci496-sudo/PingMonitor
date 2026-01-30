@@ -1148,10 +1148,11 @@ def open_filter_window(field):
     list_container.pack(fill=tk.BOTH, expand=True, padx=10)
 
     canvas = tk.Canvas(
-        list_container,
-        borderwidth=0,
-        highlightthickness=0
-    )
+    list_container,
+    borderwidth=0,
+    highlightthickness=0,
+    height=300   # 🔴 KRİTİK
+)
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     scrollbar = ttk.Scrollbar(
@@ -1164,6 +1165,7 @@ def open_filter_window(field):
     canvas.configure(yscrollcommand=scrollbar.set)
 
     scroll_frame = tk.Frame(canvas)
+    scroll_frame.pack_propagate(False)
 
     canvas_window = canvas.create_window(
         (0, 0),
@@ -1175,11 +1177,6 @@ def open_filter_window(field):
         canvas.configure(scrollregion=canvas.bbox("all"))
 
     scroll_frame.bind("<Configure>", _on_frame_configure)
-
-    def _on_canvas_configure(event):
-        canvas.itemconfig(canvas_window, width=event.width)
-
-    canvas.bind("<Configure>", _on_canvas_configure)
     # ================== Mouse Wheel (Windows + Mac) ==================
     def _on_mousewheel(event):
         if event.delta:
