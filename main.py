@@ -1103,6 +1103,8 @@ def copy_selected_ip():
     root.clipboard_append(ip)
 
 def open_filter_window(field):
+    print("FILTER OPENED:", field)
+    print("DEVICES COUNT:", len(devices))
     def normalize_ip(val):
         if val is None:
             return None
@@ -1221,14 +1223,11 @@ def open_filter_window(field):
     raw_values = []
 
     for d in devices:
-        v = d.get(field)
-
-        if field == "ip":
-            v = normalize_ip(v)
-
-            # 🔴 GEÇERSİZ IP’LERİ ELE
-            if not v or "." not in v:
-                continue
+        v = None
+        for k in d:
+            if k.lower() == field.lower():
+                v = d[k]
+                break
 
         if v is None:
             continue
