@@ -5,7 +5,12 @@ from openpyxl import load_workbook
 
 DEVICES_XLSX = "devices.xlsx"
 
+def load_devices_from_excel(path, mapping):
+    if not path or not os.path.exists(path):
+        raise ValueError("Excel dosya yolu geçersiz")
 
+    if not path.lower().endswith((".xlsx", ".xlsm", ".xltx", ".xltm")):
+        raise ValueError(f"Desteklenmeyen Excel formatı: {path}")
 
 def add_device_to_excel(device, excel_path):
     wb = load_workbook(excel_path)
@@ -91,3 +96,7 @@ def update_device_in_excel(old_ip, updated_device, excel_path):
             break
 
     wb.save(excel_path)
+
+def save_devices(devices):
+    with open("devices.json", "w", encoding="utf-8") as f:
+        json.dump(devices, f, indent=2, ensure_ascii=False)

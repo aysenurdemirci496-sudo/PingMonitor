@@ -254,13 +254,16 @@ def ip_to_tuple(ip):
         return (0, 0, 0, 0)
 
 def load_config():
-    global excel_path, excel_mapping
-
+    global excel_path
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-            excel_path = data.get("excel_path")
-            excel_mapping = data.get("excel_mapping")
+            path = data.get("excel_path")
+
+            if path and os.path.exists(path):
+                excel_path = path
+            else:
+                excel_path = None
 
 
 def save_config():
@@ -583,6 +586,13 @@ def select_excel_file():
     )
 
     if not path:
+        return
+    
+    if not path.lower().endswith((".xlsx", ".xlsm", ".xltx", ".xltm")):
+        messagebox.showerror(
+            "Geçersiz Dosya",
+            "Lütfen .xlsx formatında bir Excel dosyası seçin"
+        )
         return
 
     excel_path = path
