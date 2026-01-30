@@ -500,6 +500,11 @@ def refresh_from_excel():
 
     # 3️⃣ RAM + JSON güncelle
     devices = new_devices
+
+    # 🔴 KRİTİK
+    all_devices.clear()
+    all_devices.extend(new_devices)
+
     save_devices(devices)
 
     # 4️⃣ Listeyi yenile
@@ -615,6 +620,11 @@ def select_excel_file():
         save_config()
 
         devices = load_devices_from_excel(excel_path, excel_mapping)
+
+        # 🔴 KRİTİK
+        all_devices.clear()
+        all_devices.extend(devices)
+
         refresh_device_list()
 
     root.after(
