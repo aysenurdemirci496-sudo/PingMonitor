@@ -1266,7 +1266,7 @@ def open_filter_window(field):
             vars_map[val] = var
             checkbuttons[val] = chk
 
-        canvas.update_idletasks()
+        scroll_frame.update_idletasks()
         canvas.configure(scrollregion=canvas.bbox("all"))
 
     def select_all():
