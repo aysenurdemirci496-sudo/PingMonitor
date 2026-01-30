@@ -1148,11 +1148,13 @@ def open_filter_window(field):
     list_container.pack(fill=tk.BOTH, expand=True, padx=10)
 
     canvas = tk.Canvas(
-        list_container,
-        borderwidth=0,
-        highlightthickness=0
+    list_container,
+    borderwidth=0,
+    highlightthickness=0,
+    height=300   # 🔴 KRİTİK SATIR
     )
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    canvas.pack_propagate(False)   # 🔴 KRİTİK
 
     scrollbar = ttk.Scrollbar(
         list_container,
