@@ -1151,7 +1151,7 @@ def open_filter_window(field):
     list_container,
     borderwidth=0,
     highlightthickness=0,
-    height=300   # 🔴 KRİTİK SATIR
+    height=380  # 🔴 KRİTİK SATIR
     )
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     canvas.pack_propagate(False)   # 🔴 KRİTİK
