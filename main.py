@@ -1171,23 +1171,20 @@ def open_filter_window(field):
         anchor="nw"
     )
 
-    # 🔑 scrollregion HER DEĞİŞİMDE güncellenecek
-    def _on_frame_configure(event):
+    def _on_frame_configure(event=None):
         canvas.configure(scrollregion=canvas.bbox("all"))
 
     scroll_frame.bind("<Configure>", _on_frame_configure)
 
-    # 🔑 Canvas genişliği pencereye uysun
     def _on_canvas_configure(event):
         canvas.itemconfig(canvas_window, width=event.width)
 
     canvas.bind("<Configure>", _on_canvas_configure)
-
     # ================== Mouse Wheel (Windows + Mac) ==================
     def _on_mousewheel(event):
-        if event.delta:  # Windows
+        if event.delta:
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        elif event.num == 4:  # Mac / Linux
+        elif event.num == 4:
             canvas.yview_scroll(-1, "units")
         elif event.num == 5:
             canvas.yview_scroll(1, "units")
@@ -1247,6 +1244,7 @@ def open_filter_window(field):
     vars_map = {}
     checkbuttons = {}
 
+
     def render_list():
         for chk in checkbuttons.values():
             chk.destroy()
@@ -1278,8 +1276,9 @@ def open_filter_window(field):
             var.set(False)
 
     search_var.trace_add("write", lambda *args: render_list())
+    win.update_idletasks()
     render_list()
-    
+        
 def clear_all_filters():
     global current_page
 
