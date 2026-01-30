@@ -1144,17 +1144,15 @@ def open_filter_window(field):
     tk.Button(top_btns, text="❌ Temizle", command=lambda: clear_all()).pack(side=tk.LEFT, padx=5)
 
     # ================== SCROLLABLE ALAN ==================
+    # ================== SCROLLABLE ALAN ==================
     list_container = tk.Frame(win)
     list_container.pack(fill=tk.BOTH, expand=True, padx=10)
 
     canvas = tk.Canvas(
-    list_container,
-    borderwidth=0,
-    highlightthickness=0,
-    height=380  # 🔴 KRİTİK SATIR
+        list_container,
+        highlightthickness=0
     )
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    canvas.pack_propagate(False)   # 🔴 KRİTİK
 
     scrollbar = ttk.Scrollbar(
         list_container,
@@ -1166,14 +1164,14 @@ def open_filter_window(field):
     canvas.configure(yscrollcommand=scrollbar.set)
 
     scroll_frame = tk.Frame(canvas)
-
     canvas_window = canvas.create_window(
         (0, 0),
         window=scroll_frame,
         anchor="nw"
     )
 
-    def _on_frame_configure(event=None):
+    # 🔴 EN KRİTİK: scrollregion güncellemesi
+    def _on_frame_configure(event):
         canvas.configure(scrollregion=canvas.bbox("all"))
 
     scroll_frame.bind("<Configure>", _on_frame_configure)
@@ -1182,7 +1180,8 @@ def open_filter_window(field):
         canvas.itemconfig(canvas_window, width=event.width)
 
     canvas.bind("<Configure>", _on_canvas_configure)
-    # ================== Mouse Wheel (Windows + Mac) ==================
+
+    # 🔴 Mouse wheel + scrollbar birlikte çalışsın
     def _on_mousewheel(event):
         if event.delta:
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
@@ -1191,9 +1190,9 @@ def open_filter_window(field):
         elif event.num == 5:
             canvas.yview_scroll(1, "units")
 
-    win.bind("<MouseWheel>", _on_mousewheel)
-    win.bind("<Button-4>", _on_mousewheel)
-    win.bind("<Button-5>", _on_mousewheel)
+    canvas.bind_all("<MouseWheel>", _on_mousewheel)   # Windows
+    canvas.bind_all("<Button-4>", _on_mousewheel)     # Linux
+    canvas.bind_all("<Button-5>", _on_mousewheel)     # Linux
 
     # ================== ALT OK BUTONU ==================
     bottom = tk.Frame(win)
