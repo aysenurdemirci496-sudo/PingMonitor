@@ -7,7 +7,7 @@ import platform
 import re
 from datetime import datetime
 from tkinter import messagebox
-
+from device_loader import load_devices
 from device_loader import load_devices_from_excel, save_devices
 from tkinter import filedialog
 import json
@@ -467,50 +467,38 @@ def toggle_ping():
 def refresh_from_excel():
     global devices
 
-    # 1️⃣ Excel yolu veya kolon eşleştirme yoksa DUR
     if not excel_path or not excel_mapping:
         messagebox.showwarning(
             "Excel",
-            "Excel dosyası veya kolon eşleştirmesi bulunamadı.\n"
-            "Lütfen önce 'Excel Seç' butonunu kullanın."
+            "Excel seçilmemiş veya kolon eşleştirmesi yok."
         )
         return
 
-    try:
-        # 2️⃣ Excel'den cihazları oku (HİÇBİR UI AÇMAZ)
-        excel_devices = load_devices_from_excel(excel_path, excel_mapping)
+    # 1️⃣ Excel'den cihazları oku
+    excel_devices = load_devices_from_excel(excel_path, excel_mapping)
 
-    except Exception as e:
-        messagebox.showerror(
-            "Excel Okuma Hatası",
-            f"Excel okunurken hata oluştu:\n\n{e}"
-        )
-        return
-
-    # 3️⃣ Eski ping bilgilerini KORU, Excel verisiyle birleştir
-    merged = []
+    # 2️⃣ Eski ping bilgilerini koru
+    new_devices = []
 
     for ex in excel_devices:
         old = next((d for d in devices if d.get("ip") == ex.get("ip")), None)
 
         if old:
-            # Excel'den gelen alanları güncelle
-            old.update(ex)
-            merged.append(old)
+            ex["latency"] = old.get("latency")
+            ex["last_ping"] = old.get("last_ping")
+            ex["status"] = old.get("status", "UNKNOWN")
         else:
-            # Yeni cihaz
-            merged.append({
-                **ex,
-                "latency": None,
-                "last_ping": None,
-                "status": "UNKNOWN"
-            })
+            ex["latency"] = None
+            ex["last_ping"] = None
+            ex["status"] = "UNKNOWN"
 
-    # 4️⃣ RAM + JSON güncelle
-    devices = merged
+        new_devices.append(ex)
+
+    # 3️⃣ RAM + JSON güncelle
+    devices = new_devices
     save_devices(devices)
 
-    # 5️⃣ Listeyi yenile (seçimi koru)
+    # 4️⃣ Listeyi yenile
     refresh_device_list(keep_selection=True)
 
 def open_mapping_window(excel_headers, on_done):
@@ -986,7 +974,7 @@ def open_add_device_window():
         if ip_exists(new_ip):
             messagebox.showwarning(
                 "IP Çakışması",
-                f"Bu IP zaten başka bir cihaza ait:\n{new_ip}"
+                f"Bu IP zaten kayıtlı:\n{new_ip}"
             )
             return
 
@@ -1004,13 +992,12 @@ def open_add_device_window():
             "status": "UNKNOWN"
         }
 
-        devices.append(new_device)
-
+        # ✅ 1️⃣ Excel'e yaz
         from device_loader import add_device_to_excel
-        devices.append(new_device)        # RAM
-        add_device_to_excel(new_device)   # EXCEL
-        save_devices(devices)             # JSON
-        refresh_device_list(keep_selection=True)
+        add_device_to_excel(new_device)
+
+        # ✅ 2️⃣ Excel'den TEKRAR OKU (tek gerçek kaynak)
+        refresh_from_excel()
 
         win.destroy()
 
@@ -1574,7 +1561,25 @@ load_config()
 devices = []
 
 if excel_path and excel_mapping:
-    devices = load_devices_from_excel(excel_path, excel_mapping)
+    # Excel'den oku
+    excel_devices = load_devices_from_excel(excel_path, excel_mapping)
+
+    # JSON'dan son pingleri al
+    cached_devices = load_devices()
+
+    for ex in excel_devices:
+        cached = next((d for d in cached_devices if d.get("ip") == ex.get("ip")), None)
+
+        if cached:
+            ex["latency"] = cached.get("latency")
+            ex["last_ping"] = cached.get("last_ping")
+            ex["status"] = cached.get("status", "UNKNOWN")
+        else:
+            ex["latency"] = None
+            ex["last_ping"] = None
+            ex["status"] = "UNKNOWN"
+
+        devices.append(ex)
 
 refresh_device_list()
 root.after(100, process_ui_queue)
