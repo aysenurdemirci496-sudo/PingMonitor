@@ -20,7 +20,6 @@ IS_WINDOWS = platform.system().lower() == "windows"
 FONT_NAME = "Segoe UI" if IS_WINDOWS else "Helvetica"
 
 # ---------------- GLOBAL STATE ----------------
-all_devices = []
 CONFIG_FILE = "config.json"
 excel_path = None
 excel_mapping = None
@@ -500,11 +499,6 @@ def refresh_from_excel():
 
     # 3️⃣ RAM + JSON güncelle
     devices = new_devices
-
-    # 🔴 KRİTİK
-    all_devices.clear()
-    all_devices.extend(new_devices)
-
     save_devices(devices)
 
     # 4️⃣ Listeyi yenile
@@ -620,11 +614,6 @@ def select_excel_file():
         save_config()
 
         devices = load_devices_from_excel(excel_path, excel_mapping)
-
-        # 🔴 KRİTİK
-        all_devices.clear()
-        all_devices.extend(devices)
-
         refresh_device_list()
 
     root.after(
@@ -1114,8 +1103,6 @@ def copy_selected_ip():
     root.clipboard_append(ip)
 
 def open_filter_window(field):
-    print("FILTER OPENED:", field)
-    print("DEVICES COUNT:", len(devices))
     def normalize_ip(val):
         if val is None:
             return None
@@ -1161,13 +1148,11 @@ def open_filter_window(field):
     list_container.pack(fill=tk.BOTH, expand=True, padx=10)
 
     canvas = tk.Canvas(
-    list_container,
-    borderwidth=0,
-    highlightthickness=0,
-    height=300   # 🔴 KRİTİK
-)
+        list_container,
+        borderwidth=0,
+        highlightthickness=0
+    )
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    canvas.pack_propagate(False)
 
     scrollbar = ttk.Scrollbar(
         list_container,
@@ -1179,7 +1164,6 @@ def open_filter_window(field):
     canvas.configure(yscrollcommand=scrollbar.set)
 
     scroll_frame = tk.Frame(canvas)
-    scroll_frame.pack_propagate(False)
 
     canvas_window = canvas.create_window(
         (0, 0),
@@ -1191,6 +1175,11 @@ def open_filter_window(field):
         canvas.configure(scrollregion=canvas.bbox("all"))
 
     scroll_frame.bind("<Configure>", _on_frame_configure)
+
+    def _on_canvas_configure(event):
+        canvas.itemconfig(canvas_window, width=event.width)
+
+    canvas.bind("<Configure>", _on_canvas_configure)
     # ================== Mouse Wheel (Windows + Mac) ==================
     def _on_mousewheel(event):
         if event.delta:
@@ -1233,21 +1222,18 @@ def open_filter_window(field):
 
     raw_values = []
 
-    for d in all_devices:
-        v = None
-        for k in d:
-            if k.lower() == field.lower():
-                v = d[k]
-                break
+    for d in devices:
+        v = d.get(field)
 
-        if v is None:
-            continue
+        if field == "ip":
+            v = normalize_ip(v)
 
-        v = str(v).strip()
-        if not v:
-            continue
+            # 🔴 GEÇERSİZ IP’LERİ ELE
+            if not v or "." not in v:
+                continue
 
-        raw_values.append(v)
+        if isinstance(v, str) and v.strip():
+            raw_values.append(v.strip())
 
     values = sorted(
         set(raw_values),
@@ -1643,7 +1629,6 @@ context_menu.add_command(
 load_config()
 
 devices = []
-all_devices = []
 
 cached_devices = load_devices()
 
@@ -1663,7 +1648,7 @@ if excel_path and excel_mapping:
             ex["status"] = "UNKNOWN"
 
         devices.append(ex)
-        all_devices.append(ex)
+
 refresh_device_list()
 root.after(100, process_ui_queue)
 root.mainloop()
