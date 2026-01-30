@@ -27,7 +27,7 @@ def add_device_to_excel(device, excel_path):
         device.get("description")
     ])
 
-    wb.save("devices.xlsx")
+    wb.save(excel_path)
 
 
 
