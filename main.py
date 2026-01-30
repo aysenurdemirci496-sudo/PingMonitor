@@ -1154,6 +1154,7 @@ def open_filter_window(field):
     height=300   # 🔴 KRİTİK
 )
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+    canvas.pack_propagate(False)
 
     scrollbar = ttk.Scrollbar(
         list_container,
@@ -1229,8 +1230,14 @@ def open_filter_window(field):
             if not v or "." not in v:
                 continue
 
-        if isinstance(v, str) and v.strip():
-            raw_values.append(v.strip())
+        if v is None:
+            continue
+
+        v = str(v).strip()
+        if not v:
+            continue
+
+        raw_values.append(v)
 
     values = sorted(
         set(raw_values),
