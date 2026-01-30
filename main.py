@@ -1083,7 +1083,7 @@ def show_device_details():
         device["description"] = entries["Description"].get()
 
         from device_loader import update_device_in_excel
-        update_device_in_excel(old_ip, device, excel_path)
+        update_device_in_excel(old_ip, device, excel_path, excel_mapping)
 
         save_devices(devices)
         refresh_device_list(keep_selection=True)
@@ -1103,6 +1103,24 @@ def copy_selected_ip():
     root.clipboard_append(ip)
 
 def open_filter_window(field):
+    def normalize_ip(val):
+        if val is None:
+            return None
+
+        # pandas NaN yakala
+        try:
+            import math
+            if isinstance(val, float) and math.isnan(val):
+                return None
+        except Exception:
+            pass
+
+        # float gelirse .0 kırp
+        if isinstance(val, float):
+            val = str(val).rstrip("0").rstrip(".")
+
+        return str(val).strip()
+
     win = tk.Toplevel(root)
     win.title(f"{FILTERABLE_FIELDS[field]} Filtre")
     win.geometry("320x450")
@@ -1134,39 +1152,36 @@ def open_filter_window(field):
         borderwidth=0,
         highlightthickness=0
     )
+    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
     scrollbar = ttk.Scrollbar(
         list_container,
         orient="vertical",
         command=canvas.yview
     )
+    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    canvas.configure(yscrollcommand=scrollbar.set)
 
     scroll_frame = tk.Frame(canvas)
 
-    # Canvas ↔ Scrollbar bağlantısı
-    canvas.configure(yscrollcommand=scrollbar.set)
-
-    # Scroll frame’i canvas içine yerleştir
     canvas_window = canvas.create_window(
         (0, 0),
         window=scroll_frame,
         anchor="nw"
     )
 
-    # Scroll bölgesini otomatik güncelle
+    # 🔑 scrollregion HER DEĞİŞİMDE güncellenecek
     def _on_frame_configure(event):
         canvas.configure(scrollregion=canvas.bbox("all"))
 
     scroll_frame.bind("<Configure>", _on_frame_configure)
 
-    # Canvas genişliği pencereyle uyumlu olsun
+    # 🔑 Canvas genişliği pencereye uysun
     def _on_canvas_configure(event):
         canvas.itemconfig(canvas_window, width=event.width)
 
     canvas.bind("<Configure>", _on_canvas_configure)
-
-    canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-    scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
     # ================== Mouse Wheel (Windows + Mac) ==================
     def _on_mousewheel(event):
@@ -1212,10 +1227,16 @@ def open_filter_window(field):
 
     for d in devices:
         v = d.get(field)
+
         if field == "ip":
             v = normalize_ip(v)
-        if v:
-            raw_values.append(v)
+
+            # 🔴 GEÇERSİZ IP’LERİ ELE
+            if not v or "." not in v:
+                continue
+
+        if isinstance(v, str) and v.strip():
+            raw_values.append(v.strip())
 
     values = sorted(
         set(raw_values),
@@ -1244,6 +1265,7 @@ def open_filter_window(field):
 
             vars_map[val] = var
             checkbuttons[val] = chk
+
         canvas.update_idletasks()
         canvas.configure(scrollregion=canvas.bbox("all"))
 

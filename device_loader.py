@@ -76,23 +76,36 @@ def load_devices_from_excel(path, mapping):
 
 
 
-def update_device_in_excel(old_ip, updated_device, excel_path):
+def update_device_in_excel(old_ip, updated_device, excel_path, mapping):
+    from openpyxl import load_workbook
+
     if not os.path.exists(excel_path):
         return
 
     wb = load_workbook(excel_path)
     ws = wb.active
 
+    # Excel başlıklarını al
+    headers = [cell.value for cell in ws[1]]
+    header_index = {h: i for i, h in enumerate(headers)}
+
+    # IP hangi kolonda?
+    ip_header = mapping.get("ip")
+    if ip_header not in header_index:
+        return
+
+    ip_col = header_index[ip_header] + 1  # 1-based index
+
     for row in ws.iter_rows(min_row=2):
-        if str(row[1].value) == str(old_ip):
-            row[0].value = updated_device["name"]
-            row[1].value = updated_device["ip"]
-            row[2].value = updated_device.get("device", "")
-            row[3].value = updated_device.get("model", "")
-            row[4].value = updated_device.get("mac", "")
-            row[5].value = updated_device.get("location", "")
-            row[6].value = updated_device.get("unit", "")
-            row[7].value = updated_device.get("description", "")
+        if str(row[ip_col - 1].value) == str(old_ip):
+
+            for field, header in mapping.items():
+                col_idx = header_index.get(header)
+                if col_idx is None:
+                    continue
+
+                row[col_idx].value = updated_device.get(field, "")
+
             break
 
     wb.save(excel_path)
