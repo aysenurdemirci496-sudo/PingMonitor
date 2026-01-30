@@ -20,6 +20,7 @@ IS_WINDOWS = platform.system().lower() == "windows"
 FONT_NAME = "Segoe UI" if IS_WINDOWS else "Helvetica"
 
 # ---------------- GLOBAL STATE ----------------
+all_devices = []
 CONFIG_FILE = "config.json"
 excel_path = None
 excel_mapping = None
@@ -1222,7 +1223,7 @@ def open_filter_window(field):
 
     raw_values = []
 
-    for d in devices:
+    for d in all_devices:
         v = None
         for k in d:
             if k.lower() == field.lower():
@@ -1632,6 +1633,7 @@ context_menu.add_command(
 load_config()
 
 devices = []
+all_devices = []
 
 cached_devices = load_devices()
 
@@ -1651,7 +1653,7 @@ if excel_path and excel_mapping:
             ex["status"] = "UNKNOWN"
 
         devices.append(ex)
-
+        all_devices.append(ex)
 refresh_device_list()
 root.after(100, process_ui_queue)
 root.mainloop()
