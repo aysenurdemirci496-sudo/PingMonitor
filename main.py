@@ -1083,6 +1083,29 @@ def copy_selected_ip():
     root.clipboard_clear()
     root.clipboard_append(ip)
 
+def delete_selected_device():
+    sel = device_tree.selection()
+    if not sel:
+        return
+
+    item = device_tree.item(sel[0])
+    ip = item["values"][1]
+
+    answer = messagebox.askyesno(
+        "Cihaz Sil",
+        f"{ip} adresli cihaz silinsin mi?\n\nBu işlem geri alınamaz."
+    )
+
+    if not answer:
+        return
+
+    # 1️⃣ Excel’den sil
+    from device_loader import delete_device_from_excel
+    delete_device_from_excel(ip, excel_path, excel_mapping)
+
+    # 2️⃣ Excel’den yeniden yükle
+    refresh_from_excel()
+
 
 def open_filter_window(field):
     win = tk.Toplevel(root)
@@ -1521,6 +1544,11 @@ device_tree.tag_configure("DOWN", foreground="#c0392b")
 
 # CONTEXT MENU
 context_menu = tk.Menu(root, tearoff=0)
+context_menu.add_separator()
+context_menu.add_command(
+    label="🗑 Cihazı Sil",
+    command=delete_selected_device
+)
 context_menu.add_command(label="▶ Ping Başlat", command=start_ping_from_menu)
 context_menu.add_command(label="⏹ Ping Durdur", command=stop_ping)
 context_menu.add_separator()

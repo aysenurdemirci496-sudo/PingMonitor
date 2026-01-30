@@ -1,6 +1,7 @@
 import json
 import os
 from openpyxl import load_workbook
+from openpyxl import load_workbook
 
 
 DEVICES_XLSX = "devices.xlsx"
@@ -120,3 +121,36 @@ def load_devices():
         return []
     with open("devices.json", "r", encoding="utf-8") as f:
         return json.load(f)
+    
+
+
+
+def delete_device_from_excel(ip, excel_path, excel_mapping):
+    if not excel_path or not excel_mapping:
+        return
+
+    wb = load_workbook(excel_path)
+    ws = wb.active
+
+    ip_col_header = excel_mapping.get("ip")
+    if not ip_col_header:
+        return
+
+    # IP kolon index
+    ip_col_index = None
+    for col in range(1, ws.max_column + 1):
+        if ws.cell(row=1, column=col).value == ip_col_header:
+            ip_col_index = col
+            break
+
+    if not ip_col_index:
+        return
+
+    # IP eşleşen satırı bul ve sil
+    for row in range(2, ws.max_row + 1):
+        cell_value = ws.cell(row=row, column=ip_col_index).value
+        if str(cell_value).strip() == ip:
+            ws.delete_rows(row)
+            break
+
+    wb.save(excel_path)
