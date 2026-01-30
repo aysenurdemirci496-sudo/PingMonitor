@@ -1328,15 +1328,23 @@ root.title("Ping Monitor")
 root.geometry("1100x650")
 root.minsize(1100, 650)
 
-from PIL import Image, ImageTk
-
 # ---------------- BACKGROUND ----------------
-bg_image = Image.open("bg.png")
+bg_photo = tk.PhotoImage(file="bg.png")
 
-# pencereye göre resize
-bg_image = bg_image.resize((1100, 650), Image.LANCZOS)
+bg_label = tk.Label(
+    root,
+    image=bg_photo,
+    bg="black"
+)
 
-bg_photo = ImageTk.PhotoImage(bg_image)
+bg_label.place(
+    x=0,
+    y=0,
+    relwidth=1,
+    relheight=1
+)
+
+bg_label.lower()
 
 bg_label = tk.Label(
     root,
