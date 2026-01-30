@@ -7,7 +7,6 @@ import platform
 import re
 from datetime import datetime
 from tkinter import messagebox
-from device_loader import load_devices
 from device_loader import load_devices_from_excel, save_devices
 from tkinter import filedialog
 import json
@@ -1561,25 +1560,7 @@ load_config()
 devices = []
 
 if excel_path and excel_mapping:
-    # Excel'den oku
-    excel_devices = load_devices_from_excel(excel_path, excel_mapping)
-
-    # JSON'dan son pingleri al
-    cached_devices = load_devices()
-
-    for ex in excel_devices:
-        cached = next((d for d in cached_devices if d.get("ip") == ex.get("ip")), None)
-
-        if cached:
-            ex["latency"] = cached.get("latency")
-            ex["last_ping"] = cached.get("last_ping")
-            ex["status"] = cached.get("status", "UNKNOWN")
-        else:
-            ex["latency"] = None
-            ex["last_ping"] = None
-            ex["status"] = "UNKNOWN"
-
-        devices.append(ex)
+    devices = load_devices_from_excel(excel_path, excel_mapping)
 
 refresh_device_list()
 root.after(100, process_ui_queue)
