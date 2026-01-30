@@ -792,6 +792,10 @@ def on_tree_select(event=None):
     write_ip_from_selection()
 
 def on_double_click(event):
+    if is_bulk_running:
+        return
+    if len(device_tree.selection()) > 1:
+        return
     global started_from_entry
     row_id = device_tree.identify_row(event.y)
     if not row_id:
@@ -1079,7 +1083,7 @@ def show_device_details():
         device["description"] = entries["Description"].get()
 
         from device_loader import update_device_in_excel
-        update_device_in_excel(old_ip, device)
+        update_device_in_excel(old_ip, device, excel_path)
 
         save_devices(devices)
         refresh_device_list(keep_selection=True)
@@ -1126,61 +1130,56 @@ def open_filter_window(field):
     list_container.pack(fill=tk.BOTH, expand=True, padx=10)
 
     canvas = tk.Canvas(
-    list_container,
-    borderwidth=0,
-    highlightthickness=0
+        list_container,
+        borderwidth=0,
+        highlightthickness=0
     )
-    scrollbar = ttk.Scrollbar(list_container, orient="vertical", command=canvas.yview)
+
+    scrollbar = ttk.Scrollbar(
+        list_container,
+        orient="vertical",
+        command=canvas.yview
+    )
 
     scroll_frame = tk.Frame(canvas)
 
-    scroll_frame.bind(
-        "<Configure>",
-        lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-    )
+    # Canvas ↔ Scrollbar bağlantısı
     canvas.configure(yscrollcommand=scrollbar.set)
-    scrollbar.configure(command=canvas.yview)
 
-    window_id = canvas.create_window(
-    (0, 0),
-    window=scroll_frame,
-    anchor="nw"
+    # Scroll frame’i canvas içine yerleştir
+    canvas_window = canvas.create_window(
+        (0, 0),
+        window=scroll_frame,
+        anchor="nw"
     )
-    def _resize_canvas(event):
-        canvas.itemconfig(window_id, width=event.width)
 
-        canvas.bind("<Configure>", _resize_canvas)
-        canvas.configure(yscrollcommand=scrollbar.set)
+    # Scroll bölgesini otomatik güncelle
+    def _on_frame_configure(event):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    scroll_frame.bind("<Configure>", _on_frame_configure)
+
+    # Canvas genişliği pencereyle uyumlu olsun
+    def _on_canvas_configure(event):
+        canvas.itemconfig(canvas_window, width=event.width)
+
+    canvas.bind("<Configure>", _on_canvas_configure)
 
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
     scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-    # 🟢 Mouse scroll desteği (Windows + Mac)
+    # ================== Mouse Wheel (Windows + Mac) ==================
     def _on_mousewheel(event):
-        if not canvas.winfo_exists():
-            return
-
-        if event.delta:
+        if event.delta:  # Windows
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        elif event.num == 4:
+        elif event.num == 4:  # Mac / Linux
             canvas.yview_scroll(-1, "units")
         elif event.num == 5:
             canvas.yview_scroll(1, "units")
 
     win.bind("<MouseWheel>", _on_mousewheel)
     win.bind("<Button-4>", _on_mousewheel)
-    win.bind("<Button-5>", _on_mousewheel)   
-
-    def _on_mousewheel(event):
-        if not canvas.winfo_exists():
-            return
-
-        if event.delta:
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        elif event.num == 4:
-            canvas.yview_scroll(-1, "units")
-        elif event.num == 5:
-            canvas.yview_scroll(1, "units")
+    win.bind("<Button-5>", _on_mousewheel)
 
     # ================== ALT OK BUTONU ==================
     bottom = tk.Frame(win)
@@ -1202,10 +1201,27 @@ def open_filter_window(field):
     tk.Button(bottom, text="OK", width=10, command=apply_filters).pack(side=tk.RIGHT, padx=10)
 
     # ================== VERİLER ==================
+    def normalize_ip(val):
+        if val is None:
+            return None
+        if isinstance(val, float):
+            val = str(int(val))
+        return str(val).strip()
+
+    raw_values = []
+
+    for d in devices:
+        v = d.get(field)
+        if field == "ip":
+            v = normalize_ip(v)
+        if v:
+            raw_values.append(v)
+
     values = sorted(
-        set(str(d.get(field)) for d in devices if d.get(field)),
+        set(raw_values),
         key=lambda x: tuple(int(p) for p in x.split(".")) if field == "ip" else x.lower()
     )
+
 
     vars_map = {}
     checkbuttons = {}
@@ -1490,6 +1506,20 @@ tk.Button(pagination, text="◀ Önceki", command=prev_page).pack(side=tk.LEFT)
 tk.Button(pagination, text="Sonraki ▶", command=next_page).pack(side=tk.LEFT)
 
 # BINDINGS
+def ctrl_click_select(event):
+    row = device_tree.identify_row(event.y)
+    if not row:
+        return "break"
+
+    if row in device_tree.selection():
+        device_tree.selection_remove(row)
+    else:
+        device_tree.selection_add(row)
+
+    device_tree.focus(row)
+    return "break"
+device_tree.bind("<Control-Button-1>", ctrl_click_select)
+device_tree.bind("<Command-Button-1>", ctrl_click_select)
 device_tree.bind("<Button-1>", on_heading_click)
 device_tree.bind("<<TreeviewSelect>>", on_tree_select)
 device_tree.bind("<Double-1>", on_double_click)
@@ -1512,11 +1542,17 @@ device_tree.bind("<Button-5>", lambda e: device_tree.yview_scroll(1, "units"))  
 
 device_tree.bind("<Button-3>", show_context_menu)
 device_tree.bind("<Button-2>", show_context_menu)
-device_tree.bind("<Control-Button-1>", show_context_menu)
 root.bind("<Shift-F10>", show_context_menu)
 
 
-root.bind("<Return>", start_ping)
+def safe_start_ping(event=None):
+    if is_bulk_running:
+        return
+    if len(device_tree.selection()) > 1:
+        return
+    start_ping(event)
+
+root.bind("<Return>", safe_start_ping)
 root.bind("<Escape>", stop_ping)
 root.bind("<Left>", lambda e: move_focus_horizontal(-1))
 root.bind("<Right>", lambda e: move_focus_horizontal(1))
@@ -1531,7 +1567,17 @@ device_tree.tag_configure("DOWN", foreground="#c0392b")
 
 # CONTEXT MENU
 context_menu = tk.Menu(root, tearoff=0)
-context_menu.add_command(label="▶ Ping Başlat", command=start_ping_from_menu)
+def safe_start_ping_from_menu():
+    if is_bulk_running:
+        return
+    if len(device_tree.selection()) > 1:
+        return
+    start_ping_from_menu()
+
+context_menu.add_command(
+    label="▶ Ping Başlat",
+    command=safe_start_ping_from_menu
+)
 context_menu.add_command(label="⏹ Ping Durdur", command=stop_ping)
 context_menu.add_separator()
 context_menu.add_command(
