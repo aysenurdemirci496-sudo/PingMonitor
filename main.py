@@ -472,7 +472,16 @@ def refresh_from_excel():
 
     bulk_status_label.config(text="")
 
-    excel_devices = load_devices_from_excel(excel_path, excel_mapping)
+    # 🔴 KRİTİK KISIM BURASI
+    try:
+        excel_devices = load_devices_from_excel(excel_path, excel_mapping)
+    except Exception as e:
+        messagebox.showerror(
+            "Excel Okuma Hatası",
+            f"Excel okunamadı:\n{e}"
+        )
+        return
+
     merged = []
 
     for ex in excel_devices:
@@ -1541,6 +1550,5 @@ load_config()
 devices = load_devices()
 
 refresh_device_list()
-
 root.after(100, process_ui_queue)
 root.mainloop()

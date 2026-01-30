@@ -37,29 +37,46 @@ def load_devices():
     return []
 
 
-def load_devices_from_excel(path, mapping=None, parent=None):
-    import pandas as pd
-    if mapping is None:
-        headers = list(df.columns)
-
-        from excel_mapping_ui import show_mapping_window
-        mapping = show_mapping_window(headers, parent)
-
-        if not mapping:
-            return []
-    df = pd.read_excel(path)
+def load_devices_from_excel(path, mapping):
     devices = []
 
-    for _, row in df.iterrows():
+    # 1️⃣ ÖNCE PANDAS DENE
+    try:
+        import pandas as pd
+
+        df = pd.read_excel(path)
+
+        for _, row in df.iterrows():
+            device = {}
+            for field, header in mapping.items():
+                device[field] = row.get(header)
+            devices.append(device)
+
+        return devices
+
+    except Exception:
+        pass   # pandas yoksa sessizce devam et
+
+    # 2️⃣ FALLBACK → OPENPYXL
+    from openpyxl import load_workbook
+
+    wb = load_workbook(path, data_only=True)
+    ws = wb.active
+
+    headers = [cell.value for cell in ws[1]]
+
+    header_index = {h: i for i, h in enumerate(headers)}
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
         device = {}
 
         for field, header in mapping.items():
-            device[field] = row.get(header)
+            idx = header_index.get(header)
+            device[field] = row[idx] if idx is not None else None
 
         devices.append(device)
 
     return devices
-
 def save_devices(devices):
     with open(DEVICES_JSON, "w", encoding="utf-8") as f:
         json.dump(devices, f, indent=2, ensure_ascii=False)
