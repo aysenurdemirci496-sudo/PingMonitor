@@ -1144,13 +1144,13 @@ def open_filter_window(field):
     tk.Button(top_btns, text="❌ Temizle", command=lambda: clear_all()).pack(side=tk.LEFT, padx=5)
 
     # ================== SCROLLABLE ALAN ==================
-    # ================== SCROLLABLE ALAN ==================
     list_container = tk.Frame(win)
-    list_container.pack(fill=tk.BOTH, expand=True, padx=10)
+    list_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 5))
 
     canvas = tk.Canvas(
         list_container,
-        highlightthickness=0
+        highlightthickness=0,
+        height=260   # 🔴 KRİTİK: SABİT YÜKSEKLİK
     )
     canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
@@ -1170,8 +1170,7 @@ def open_filter_window(field):
         anchor="nw"
     )
 
-    # 🔴 EN KRİTİK: scrollregion güncellemesi
-    def _on_frame_configure(event):
+    def _on_frame_configure(event=None):
         canvas.configure(scrollregion=canvas.bbox("all"))
 
     scroll_frame.bind("<Configure>", _on_frame_configure)
@@ -1180,8 +1179,7 @@ def open_filter_window(field):
         canvas.itemconfig(canvas_window, width=event.width)
 
     canvas.bind("<Configure>", _on_canvas_configure)
-
-    # 🔴 Mouse wheel + scrollbar birlikte çalışsın
+    # ================== Mouse Wheel (Windows + Mac) ==================
     def _on_mousewheel(event):
         if event.delta:
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
@@ -1190,9 +1188,9 @@ def open_filter_window(field):
         elif event.num == 5:
             canvas.yview_scroll(1, "units")
 
-    canvas.bind_all("<MouseWheel>", _on_mousewheel)   # Windows
-    canvas.bind_all("<Button-4>", _on_mousewheel)     # Linux
-    canvas.bind_all("<Button-5>", _on_mousewheel)     # Linux
+    canvas.bind("<MouseWheel>", _on_mousewheel)   # Windows / Mac
+    canvas.bind("<Button-4>", _on_mousewheel)     # Linux
+    canvas.bind("<Button-5>", _on_mousewheel)
 
     # ================== ALT OK BUTONU ==================
     bottom = tk.Frame(win)
@@ -1265,7 +1263,7 @@ def open_filter_window(field):
             vars_map[val] = var
             checkbuttons[val] = chk
 
-        scroll_frame.update_idletasks()
+        canvas.update_idletasks()
         canvas.configure(scrollregion=canvas.bbox("all"))
 
     def select_all():
@@ -1275,10 +1273,15 @@ def open_filter_window(field):
     def clear_all():
         for var in vars_map.values():
             var.set(False)
-
+            
     search_var.trace_add("write", lambda *args: render_list())
     win.update_idletasks()
     render_list()
+
+    win.after(0, lambda: (
+        scroll_frame.update_idletasks(),
+        canvas.configure(scrollregion=canvas.bbox("all"))
+    ))
         
 def clear_all_filters():
     global current_page
