@@ -53,12 +53,6 @@ COLUMN_WIDTHS = {
 current_sort_column = None
 current_sort_reverse = False
 
-def update_column_headers():
-    for col in cols:
-        text = col
-        if col == current_sort_column:
-            text += " ▼" if current_sort_reverse else " ▲"
-        device_tree.heading(col, text=text)
 devices = []
 current_ip = None
 is_running = False
@@ -160,15 +154,6 @@ def single_ping(ip, timeout=2):
     
 from concurrent.futures import ThreadPoolExecutor
 
-def bulk_ping_devices(devices_to_ping):
-    def ping_one(device):
-        ip = device["ip"]
-        ms = single_ping(ip)
-        ui_queue.put(("BULK", ip, ms))
-
-    # aynı anda EN FAZLA 10 ping
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        executor.map(ping_one, devices_to_ping)
 
 def ip_exists(ip, exclude_device=None):
     for d in devices:
@@ -1514,7 +1499,14 @@ device_tree.bind("<Control-Button-1>", show_context_menu)
 root.bind("<Shift-F10>", show_context_menu)
 
 
-root.bind("<Return>", start_ping)
+def safe_start_ping(event=None):
+    if is_bulk_running:
+        return
+    if len(device_tree.selection()) > 1:
+        return
+    start_ping(event)
+
+root.bind("<Return>", safe_start_ping)
 root.bind("<Escape>", stop_ping)
 root.bind("<Left>", lambda e: move_focus_horizontal(-1))
 root.bind("<Right>", lambda e: move_focus_horizontal(1))
