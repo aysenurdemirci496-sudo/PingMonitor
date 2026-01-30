@@ -1540,10 +1540,7 @@ load_config()
 
 devices = load_devices()
 
-if excel_path and excel_mapping:
-    refresh_from_excel()
-else:
-    refresh_device_list()
+refresh_device_list()
 
 root.after(100, process_ui_queue)
 root.mainloop()
