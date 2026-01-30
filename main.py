@@ -1328,6 +1328,32 @@ root.title("Ping Monitor")
 root.geometry("1100x650")
 root.minsize(1100, 650)
 
+from PIL import Image, ImageTk
+
+# ---------------- BACKGROUND ----------------
+bg_image = Image.open("bg.png")
+
+# pencereye göre resize
+bg_image = bg_image.resize((1100, 650), Image.LANCZOS)
+
+bg_photo = ImageTk.PhotoImage(bg_image)
+
+bg_label = tk.Label(
+    root,
+    image=bg_photo,
+    bg="black"
+)
+
+bg_label.place(
+    x=0,
+    y=0,
+    relwidth=1,
+    relheight=1
+)
+
+# 🔴 ÇOK KRİTİK
+bg_label.lower()
+
 # 🔑 PLATFORM FONT STYLE (SADECE EKLENEN KISIM)
 style = ttk.Style(root)
 style.configure(
