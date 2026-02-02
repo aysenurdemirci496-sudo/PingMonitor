@@ -12,7 +12,217 @@ from device_loader import load_devices_from_excel, save_devices
 from tkinter import filedialog
 import json
 import os
-import socket
+import sys
+
+# ---------------- UI THEME (Modern Dark) ----------------
+# This block only affects styling (colors, rounded controls). Core logic is unchanged.
+
+BG_COLOR = "#0E1117"
+PANEL_COLOR = "#121826"
+FG_COLOR = "#E6EAF2"
+MUTED_FG = "#AAB3C5"
+ACCENT = "#4C8DFF"
+BORDER = "#3A4661"
+SELECT_BG = "#2A3350"
+
+def resource_path(relative_path: str) -> str:
+    """Get absolute path to resource (works for PyInstaller onefile)."""
+    base_path = getattr(sys, '_MEIPASS', os.path.abspath("."))
+    return os.path.join(base_path, relative_path)
+
+def load_ui_assets():
+    """Load PNG assets used to fake rounded corners on Tk widgets."""
+    assets = {}
+    assets["bg"] = tk.PhotoImage(file=resource_path("bg.png"))
+    assets["btn_normal"] = tk.PhotoImage(file=resource_path(os.path.join("assets", "btn_normal.png")))
+    assets["btn_hover"] = tk.PhotoImage(file=resource_path(os.path.join("assets", "btn_hover.png")))
+    assets["btn_pressed"] = tk.PhotoImage(file=resource_path(os.path.join("assets", "btn_pressed.png")))
+    assets["btn_disabled"] = tk.PhotoImage(file=resource_path(os.path.join("assets", "btn_disabled.png")))
+    assets["btnw_normal"] = tk.PhotoImage(file=resource_path(os.path.join("assets", "btnw_normal.png")))
+    assets["btnw_hover"] = tk.PhotoImage(file=resource_path(os.path.join("assets", "btnw_hover.png")))
+    assets["btnw_pressed"] = tk.PhotoImage(file=resource_path(os.path.join("assets", "btnw_pressed.png")))
+    assets["btnw_disabled"] = tk.PhotoImage(file=resource_path(os.path.join("assets", "btnw_disabled.png")))
+    assets["entry_bg"] = tk.PhotoImage(file=resource_path(os.path.join("assets", "entry_bg.png")))
+    assets["search_bg"] = tk.PhotoImage(file=resource_path(os.path.join("assets", "search_bg.png")))
+    return assets
+
+def apply_ttk_dark_style(root):
+    """Style ttk widgets (Treeview + Scrollbars) for a modern dark look."""
+    style = ttk.Style(root)
+    try:
+        style.theme_use("clam")
+    except:
+        pass
+
+    style.configure(".", background=BG_COLOR, foreground=FG_COLOR, fieldbackground=PANEL_COLOR)
+    style.configure("TFrame", background=BG_COLOR)
+    style.configure("TLabel", background=BG_COLOR, foreground=FG_COLOR)
+
+    # Scrollbar
+    style.configure("Vertical.TScrollbar", background=BG_COLOR, troughcolor=BG_COLOR, bordercolor=BG_COLOR, arrowcolor=FG_COLOR)
+    style.configure("Horizontal.TScrollbar", background=BG_COLOR, troughcolor=BG_COLOR, bordercolor=BG_COLOR, arrowcolor=FG_COLOR)
+
+    # Treeview (table)
+    style.configure(
+        "Treeview",
+        background=PANEL_COLOR,
+        fieldbackground=PANEL_COLOR,
+        foreground=FG_COLOR,
+        borderwidth=0,
+        relief="flat",
+        rowheight=26
+    )
+    style.map(
+        "Treeview",
+        background=[("selected", SELECT_BG)],
+        foreground=[("selected", "#FFFFFF")]
+    )
+
+    style.configure(
+        "Treeview.Heading",
+        background="#1B2130",
+        foreground="#FFFFFF",
+        relief="flat"
+    )
+    style.map("Treeview.Heading", background=[("active", "#25304A")])
+
+    return style
+
+def make_rounded_entry(parent, bg_image, *, font, inner_pad=10):
+    """Create a rounded-looking Entry by placing it on top of a PNG."""
+    w = bg_image.width()
+    h = bg_image.height()
+    c = tk.Canvas(parent, width=w, height=h, bg=BG_COLOR, highlightthickness=0, bd=0)
+    c.create_image(0, 0, anchor="nw", image=bg_image)
+
+    e = tk.Entry(
+        c,
+        bd=0,
+        relief="flat",
+        highlightthickness=0,
+        bg=PANEL_COLOR,
+        fg=FG_COLOR,
+        insertbackground=FG_COLOR,
+        font=font,
+    )
+
+    # Place the entry on top of the image with padding.
+    c.create_window(
+        inner_pad,
+        h // 2,
+        anchor="w",
+        window=e,
+        width=max(10, w - inner_pad * 2),
+        height=max(10, h - 6),
+    )
+    return c, e
+
+def style_rounded_button(btn, assets, *, wide=False):
+    """Apply rounded PNG background + hover/pressed behavior to a tk.Button.
+
+    NOTE: We do NOT rely on Tk's DISABLED state, because Tk will gray-out image buttons
+    with a very "old" look. Instead we keep the widget state NORMAL and implement an
+    internal enabled flag + a dedicated disabled image.
+    """
+    normal = assets["btnw_normal"] if wide else assets["btn_normal"]
+    hover = assets["btnw_hover"] if wide else assets["btn_hover"]
+    pressed = assets["btnw_pressed"] if wide else assets["btn_pressed"]
+    disabled = assets["btnw_disabled"] if wide else assets["btn_disabled"]
+
+    btn.configure(
+        image=normal,
+        compound="center",
+        bd=0,
+        relief="flat",
+        highlightthickness=0,
+        bg=BG_COLOR,
+        fg=FG_COLOR,
+        activeforeground=FG_COLOR,
+        activebackground=BG_COLOR,
+        cursor="hand2"
+    )
+
+    # Internal UI state
+    btn._ui_imgs = (normal, hover, pressed, disabled)
+    btn._ui_enabled = True
+    btn._ui_pressed = False
+
+    def _set_image(img):
+        try:
+            btn.configure(image=img)
+        except tk.TclError:
+            # widget may be destroyed during shutdown
+            return
+
+    def ui_set_enabled(enabled: bool):
+        btn._ui_enabled = bool(enabled)
+        if btn._ui_enabled:
+            btn.configure(cursor="hand2", fg=FG_COLOR)
+            _set_image(normal)
+        else:
+            # keep the modern look (no default gray overlay)
+            btn.configure(cursor="arrow", fg=MUTED_FG)
+            _set_image(disabled)
+
+    btn.ui_set_enabled = ui_set_enabled  # attach helper
+
+    def on_enter(_):
+        if not btn._ui_enabled:
+            return
+        if not btn._ui_pressed:
+            _set_image(hover)
+
+    def on_leave(_):
+        if not btn._ui_enabled:
+            return
+        btn._ui_pressed = False
+        _set_image(normal)
+
+    def on_press(_):
+        if not btn._ui_enabled:
+            return "break"
+        btn._ui_pressed = True
+        _set_image(pressed)
+        return "break"
+
+    def on_release(event):
+        # Stop Tk's default button invoke; we'll invoke ourselves if enabled.
+        if not btn._ui_enabled:
+            btn._ui_pressed = False
+            _set_image(disabled)
+            return "break"
+
+        btn._ui_pressed = False
+
+        # Only invoke if mouse is still inside the widget bounds
+        x, y = event.x, event.y
+        if 0 <= x < btn.winfo_width() and 0 <= y < btn.winfo_height():
+            _set_image(hover)
+            try:
+                btn.invoke()
+            except tk.TclError:
+                pass
+        else:
+            _set_image(normal)
+        return "break"
+
+    # Bindings (break prevents old-school gray state behavior)
+    btn.bind("<Enter>", on_enter)
+    btn.bind("<Leave>", on_leave)
+    btn.bind("<ButtonPress-1>", on_press)
+    btn.bind("<ButtonRelease-1>", on_release)
+
+
+
+
+
+# ---------------- PLATFORM ----------------ge=hover)
+
+    btn.bind("<Enter>", on_enter)
+    btn.bind("<Leave>", on_leave)
+    btn.bind("<ButtonPress-1>", on_press)
+    btn.bind("<ButtonRelease-1>", on_release)
+
 
 
 
@@ -55,12 +265,6 @@ COLUMN_WIDTHS = {
 current_sort_column = None
 current_sort_reverse = False
 
-def update_column_headers():
-    for col in cols:
-        text = col
-        if col == current_sort_column:
-            text += " ▼" if current_sort_reverse else " ▲"
-        device_tree.heading(col, text=text)
 devices = []
 current_ip = None
 is_running = False
@@ -162,43 +366,6 @@ def single_ping(ip, timeout=2):
     
 from concurrent.futures import ThreadPoolExecutor
 
-COMMON_PORTS = [
-    (22, "SSH"),
-    (80, "HTTP"),
-    (443, "HTTPS"),
-    (3389, "RDP"),
-]
-
-def check_port(ip, port, timeout=1.0):
-    try:
-        with socket.create_connection((ip, port), timeout=timeout):
-            return True
-    except:
-        return False
-
-
-def port_test_worker(ip, ports=None):
-    if ports is None:
-        ports = COMMON_PORTS
-
-    ui_queue.put(("PORT_TEST_START", ip, None))
-
-    for port, name in ports:
-        ok = check_port(ip, port, timeout=1.0)
-        ui_queue.put(("PORT_TEST_RESULT", ip, (port, name, ok)))
-
-    ui_queue.put(("PORT_TEST_DONE", ip, None))
-
-
-def bulk_ping_devices(devices_to_ping):
-    def ping_one(device):
-        ip = device["ip"]
-        ms = single_ping(ip)
-        ui_queue.put(("BULK", ip, ms))
-
-    # aynı anda EN FAZLA 10 ping
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        executor.map(ping_one, devices_to_ping)
 
 def ip_exists(ip, exclude_device=None):
     for d in devices:
@@ -276,32 +443,6 @@ def sort_devices_by_column(col, reverse=False):
 
 def ping_command(ip):
     return ["ping", "-t", ip] if IS_WINDOWS else ["ping", ip]
-
-def traceroute_command(ip):
-    # -d = DNS çözümleme kapalı (daha hızlı)
-    if IS_WINDOWS:
-        return ["tracert", "-d", ip]
-    else:
-        return ["traceroute", ip]
-
-
-def traceroute_worker(ip):
-    flags = subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0
-
-    proc = subprocess.Popen(
-        traceroute_command(ip),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        creationflags=flags
-    )
-
-    for line in proc.stdout:
-        # traceroute bitene kadar satır satır UI'ye gönder
-        ui_queue.put(("TRACE", ip, line))
-
-    ui_queue.put(("TRACE_DONE", ip, None))
-
 
 def ip_to_tuple(ip):
     try:
@@ -447,45 +588,6 @@ def process_ui_queue():
                     d["status"] = status_by_latency(ms)
                     update_tree_item_for_ip(ip)
                     break
-        
-                # 🧭 TRACEROUTE
-        elif item_type == "TRACE":
-            line = payload
-
-            output_box.config(state=tk.NORMAL)
-            output_box.insert(tk.END, line)
-            output_box.see(tk.END)
-            output_box.config(state=tk.DISABLED)
-
-        elif item_type == "TRACE_DONE":
-            output_box.config(state=tk.NORMAL)
-            output_box.insert(tk.END, "\n--- Traceroute tamamlandı ---\n")
-            output_box.see(tk.END)
-            output_box.config(state=tk.DISABLED)
-
-                # 🔌 PORT TEST
-        elif item_type == "PORT_TEST_START":
-            output_box.config(state=tk.NORMAL)
-            output_box.insert(tk.END, f"\n--- Port Test Başladı: {ip} ---\n")
-            output_box.see(tk.END)
-            output_box.config(state=tk.DISABLED)
-
-        elif item_type == "PORT_TEST_RESULT":
-            port, name, ok = payload
-            status_txt = "OPEN ✅" if ok else "CLOSED ❌"
-
-            output_box.config(state=tk.NORMAL)
-            output_box.insert(tk.END, f"{port:<5} ({name:<6}) -> {status_txt}\n")
-            output_box.see(tk.END)
-            output_box.config(state=tk.DISABLED)
-
-        elif item_type == "PORT_TEST_DONE":
-            output_box.config(state=tk.NORMAL)
-            output_box.insert(tk.END, f"--- Port Test Bitti: {ip} ---\n\n")
-            output_box.see(tk.END)
-            output_box.config(state=tk.DISABLED)
-
-
 
           
 
@@ -495,9 +597,9 @@ def process_ui_queue():
 
             is_bulk_running = False
             save_devices(devices)
-            start_btn.config(state=tk.NORMAL)
-            refresh_btn.config(state=tk.NORMAL)
-            add_btn.config(state=tk.NORMAL)
+            start_btn.ui_set_enabled(True)
+            refresh_btn.ui_set_enabled(True)
+            add_btn.ui_set_enabled(True)
             bulk_status_label.config(
             text=f"Toplu Ping tamamlandı ({bulk_total} / {bulk_total})"
             )
@@ -522,7 +624,7 @@ def start_ping(event=None):
 
     is_running = True
     current_ip = ip
-    start_btn.config(text="Durdur")
+    start_btn.config(text="⏹ Durdur")
 
     output_box.config(state=tk.NORMAL)
     output_box.delete("1.0", tk.END)
@@ -539,58 +641,11 @@ def start_ping_from_menu():
     started_from_entry = False
     start_ping()
 
-def start_traceroute_selected():
-    global started_from_entry
-
-    # seçili cihaz yoksa entry'den IP al
-    sel = device_tree.selection()
-    if sel:
-        ip = device_tree.item(sel[0])["values"][1]
-    else:
-        ip = ip_entry.get().strip()
-
-    if not ip:
-        messagebox.showwarning("Uyarı", "Traceroute için bir IP seçin veya girin.")
-        return
-
-    # output'u temizle
-    output_box.config(state=tk.NORMAL)
-    output_box.delete("1.0", tk.END)
-    output_box.config(state=tk.DISABLED)
-
-    # ping çalışıyorsa durdur (aynı anda karışmasın)
-    stop_ping()
-
-    # traceroute thread
-    threading.Thread(target=traceroute_worker, args=(ip,), daemon=True).start()
-def start_port_test_selected():
-    # seçili cihaz varsa oradan al
-    sel = device_tree.selection()
-    if sel:
-        ip = device_tree.item(sel[0])["values"][1]
-    else:
-        ip = ip_entry.get().strip()
-
-    if not ip:
-        messagebox.showwarning("Uyarı", "Port testi için bir IP seçin veya girin.")
-        return
-
-    # output'u temizle
-    output_box.config(state=tk.NORMAL)
-    output_box.delete("1.0", tk.END)
-    output_box.config(state=tk.DISABLED)
-
-    # ping çalışıyorsa durdur
-    stop_ping()
-
-    threading.Thread(target=port_test_worker, args=(ip,), daemon=True).start()
-
-
 def stop_ping(event=None):
     global is_running, ping_process
 
     is_running = False
-    start_btn.config(text="Başlat")
+    start_btn.config(text="▶ Başlat")
         # Ping durdu, artık entry'yi otomatik doldurabiliriz
     global started_from_entry
 
@@ -1011,9 +1066,9 @@ def start_bulk_ping():
         text=f"Toplu Ping: 0 / {bulk_total}"
     )
 
-    start_btn.config(state=tk.DISABLED)
-    refresh_btn.config(state=tk.DISABLED)
-    add_btn.config(state=tk.DISABLED)
+    start_btn.ui_set_enabled(False)
+    refresh_btn.ui_set_enabled(False)
+    add_btn.ui_set_enabled(False)
 
     threading.Thread(
         target=bulk_ping_worker,
@@ -1058,9 +1113,9 @@ def start_bulk_ping_all_filtered():
     is_bulk_running = True
 
     # 🔒 UI kilidi
-    start_btn.config(state=tk.DISABLED)
-    refresh_btn.config(state=tk.DISABLED)
-    add_btn.config(state=tk.DISABLED)
+    start_btn.ui_set_enabled(False)
+    refresh_btn.ui_set_enabled(False)
+    add_btn.ui_set_enabled(False)
 
     threading.Thread(
         target=bulk_ping_worker,
@@ -1139,7 +1194,7 @@ def open_add_device_window():
 
         # ✅ 1️⃣ Excel'e yaz
         from device_loader import add_device_to_excel
-        add_device_to_excel(new_device, excel_path)
+        add_device_to_excel(new_device, excel_path, excel_mapping)
 
         # ✅ 2️⃣ Excel'den TEKRAR OKU (tek gerçek kaynak)
         refresh_from_excel()
@@ -1221,7 +1276,12 @@ def show_device_details():
         device["description"] = entries["Description"].get()
 
         from device_loader import update_device_in_excel
-        update_device_in_excel(old_ip, device)
+        update_device_in_excel(
+            old_ip,
+            device,
+            excel_path,
+            excel_mapping
+        )
 
         save_devices(devices)
         refresh_device_list(keep_selection=True)
@@ -1239,6 +1299,29 @@ def copy_selected_ip():
     ip = device_tree.item(sel[0])["values"][1]
     root.clipboard_clear()
     root.clipboard_append(ip)
+
+def delete_selected_device():
+    sel = device_tree.selection()
+    if not sel:
+        return
+
+    item = device_tree.item(sel[0])
+    ip = item["values"][1]
+
+    answer = messagebox.askyesno(
+        "Cihaz Sil",
+        f"{ip} adresli cihaz silinsin mi?\n\nBu işlem geri alınamaz."
+    )
+
+    if not answer:
+        return
+
+    # 1️⃣ Excel’den sil
+    from device_loader import delete_device_from_excel
+    delete_device_from_excel(ip, excel_path, excel_mapping)
+
+    # 2️⃣ Excel’den yeniden yükle
+    refresh_from_excel()
 
 
 def open_filter_window(field):
@@ -1456,59 +1539,56 @@ root = tk.Tk()
 root.title("Ping Monitor")
 root.geometry("1100x650")
 root.minsize(1100, 650)
+root.configure(bg=BG_COLOR)
 
-# 🔑 PLATFORM FONT STYLE (SADECE EKLENEN KISIM)
-style = ttk.Style(root)
-style.configure(
-    "Treeview",
-    font=(FONT_NAME, 10, "bold"),
-    rowheight=26
-)
+# Modern UI assets (rounded controls + background)
+_ui_assets = load_ui_assets()
 
-style.configure(
-    "Treeview.Heading",
-    font=(FONT_NAME, 11, "bold")
-)
+# ---------------- BACKGROUND ----------------
+bg_photo = _ui_assets["bg"]
+bg_label = tk.Label(root, image=bg_photo, bg=BG_COLOR, bd=0, highlightthickness=0)
+bg_label.place(x=0, y=0, relwidth=1, relheight=1)
 
-top = tk.Frame(root)
+# ---------------- TTK DARK STYLE (Treeview/Scrollbars) ----------------
+style = apply_ttk_dark_style(root)
+style.configure("Treeview", font=(FONT_NAME, 11))
+style.configure("Treeview.Heading", font=(FONT_NAME, 11, "bold"))
+
+top = tk.Frame(root, bg=BG_COLOR)
+
 top.pack(fill=tk.X, padx=10, pady=5)
-left_controls = tk.Frame(top)
+left_controls = tk.Frame(top, bg=BG_COLOR)
 left_controls.pack(side=tk.LEFT)
 
-right_controls = tk.Frame(top)
+right_controls = tk.Frame(top, bg=BG_COLOR)
 right_controls.pack(side=tk.RIGHT)
 
-tk.Label(left_controls, text="IP:", font=(FONT_NAME, 11)).pack(side=tk.LEFT)
+tk.Label(left_controls, text="IP:", font=(FONT_NAME, 11), bg=BG_COLOR, fg=FG_COLOR).pack(side=tk.LEFT)
 
-ip_entry = tk.Entry(left_controls, width=25, font=(FONT_NAME, 11))
-ip_entry.pack(side=tk.LEFT, padx=5)
+ip_entry_container, ip_entry = make_rounded_entry(left_controls, _ui_assets["entry_bg"], font=(FONT_NAME, 11))
+ip_entry_container.pack(side=tk.LEFT, padx=8)
 
-start_btn = tk.Button(left_controls, text="Başlat", width=10, command=toggle_ping)
-start_btn.pack(side=tk.LEFT, padx=5)
+start_btn = tk.Button(left_controls, text="▶ Başlat", command=toggle_ping)
+style_rounded_button(start_btn, _ui_assets, wide=False)
+start_btn.pack(side=tk.LEFT, padx=6)
 
-refresh_btn = tk.Button(left_controls, text="Yenile", width=10, command=refresh_from_excel)
-refresh_btn.pack(side=tk.LEFT)
+refresh_btn = tk.Button(left_controls, text="⟳ Yenile", command=refresh_from_excel)
+style_rounded_button(refresh_btn, _ui_assets, wide=False)
+refresh_btn.pack(side=tk.LEFT, padx=6)
 
-add_btn = tk.Button(
-    left_controls,
-    text="➕ Ekle",
-    width=18,
-    command=open_add_device_window
-)
-add_btn.pack(side=tk.LEFT, padx=5)
+add_btn = tk.Button(left_controls, text="➕ Ekle", command=open_add_device_window)
+style_rounded_button(add_btn, _ui_assets, wide=True)
+add_btn.pack(side=tk.LEFT, padx=6)
 
-excel_btn = tk.Button(
-    left_controls,
-    text="📂 Excel Seç",
-    width=14,
-    command=select_excel_file
-)
-excel_btn.pack(side=tk.LEFT, padx=5)
+excel_btn = tk.Button(left_controls, text="📂 Excel Seç", command=select_excel_file)
+style_rounded_button(excel_btn, _ui_assets, wide=True)
+excel_btn.pack(side=tk.LEFT, padx=6)
 
-tk.Label(right_controls, text="Ara:", font=(FONT_NAME, 11)).pack(side=tk.LEFT, padx=(0, 5))
+tk.Label(right_controls, text="Ara:", font=(FONT_NAME, 11), bg=BG_COLOR, fg=FG_COLOR).pack(side=tk.LEFT, padx=(0, 8))
 
-search_entry = tk.Entry(right_controls, width=25, font=(FONT_NAME, 11))
-search_entry.pack(side=tk.LEFT)
+search_container, search_entry = make_rounded_entry(right_controls, _ui_assets["search_bg"], font=(FONT_NAME, 11))
+search_container.pack(side=tk.LEFT)
+
 
 def on_search_change(event=None):
     global search_text
@@ -1517,7 +1597,6 @@ def on_search_change(event=None):
 
 search_entry.bind("<KeyRelease>", on_search_change)
 
-add_btn.config(width=18)
 
 top_controls = [
     ip_entry,
@@ -1526,18 +1605,18 @@ top_controls = [
     add_btn
 ]
 
-main = tk.PanedWindow(root, orient=tk.HORIZONTAL)
+main = tk.PanedWindow(root, orient=tk.HORIZONTAL, bg=BG_COLOR, bd=0, sashwidth=6, sashrelief='flat')
 main.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-output_box = tk.Text(main, state=tk.DISABLED, font=(FONT_NAME, 11))
+output_box = tk.Text(main, state=tk.DISABLED, font=(FONT_NAME, 11), bg=PANEL_COLOR, fg=FG_COLOR, insertbackground=FG_COLOR, relief='flat', bd=0, highlightthickness=0)
 main.add(output_box)
 
-right = tk.Frame(main)
+right = tk.Frame(main, bg=BG_COLOR)
 main.add(right)
 
 
 # 🔹 Treeview + Scrollbar için container
-tree_container = tk.Frame(right)
+tree_container = tk.Frame(right, bg=BG_COLOR)
 tree_container.pack(fill=tk.BOTH, expand=True)
 
 
@@ -1600,14 +1679,27 @@ for c in cols:
 device_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 device_tree.update_idletasks()
 
-bulk_status_label = tk.Label(right, text="", font=(FONT_NAME, 10))
+bulk_status_label = tk.Label(right, text="", font=(FONT_NAME, 10), bg=BG_COLOR, fg=MUTED_FG)
 bulk_status_label.pack(fill=tk.X, padx=10, pady=(0, 5))
 # ---------------- PAGINATION UI ----------------
-pagination = tk.Frame(right)
+pagination = tk.Frame(right, bg=BG_COLOR)
 pagination.pack(fill=tk.X, pady=5)
 
-page_label = tk.Label(pagination, text="Sayfa 1 / 1")
+page_label = tk.Label(pagination, text="Sayfa 1 / 1", bg=BG_COLOR, fg=FG_COLOR)
 page_label.pack(side=tk.LEFT, padx=10)
+
+# ---------------- FOOTER / SIGNATURE ----------------
+footer = tk.Frame(right, bg=BG_COLOR)
+footer.pack(fill=tk.X, side=tk.BOTTOM, padx=8, pady=4)
+
+signature_label = tk.Label(
+    footer,
+    text="Anur",
+    font=(FONT_NAME, 9),
+    bg=BG_COLOR,
+    fg="#7f8c8d"   # gri – göz yormaz
+)
+signature_label.pack(side=tk.RIGHT)
 
 def update_page_label():
     page_label.config(text=f"Sayfa {current_page} / {total_pages}")
@@ -1626,8 +1718,13 @@ def next_page():
         refresh_device_list()
         update_page_label()
 
-tk.Button(pagination, text="◀ Önceki", command=prev_page).pack(side=tk.LEFT)
-tk.Button(pagination, text="Sonraki ▶", command=next_page).pack(side=tk.LEFT)
+prev_btn = tk.Button(pagination, text="◀ Önceki", command=prev_page)
+style_rounded_button(prev_btn, _ui_assets, wide=False)
+prev_btn.pack(side=tk.LEFT, padx=(6, 6))
+
+next_btn = tk.Button(pagination, text="Sonraki ▶", command=next_page)
+style_rounded_button(next_btn, _ui_assets, wide=False)
+next_btn.pack(side=tk.LEFT, padx=(0, 6))
 
 # BINDINGS
 device_tree.bind("<Button-1>", on_heading_click)
@@ -1652,11 +1749,31 @@ device_tree.bind("<Button-5>", lambda e: device_tree.yview_scroll(1, "units"))  
 
 device_tree.bind("<Button-3>", show_context_menu)
 device_tree.bind("<Button-2>", show_context_menu)
-device_tree.bind("<Control-Button-1>", show_context_menu)
+def ctrl_click_select(event):
+    row = device_tree.identify_row(event.y)
+    if not row:
+        return "break"
+
+    if row in device_tree.selection():
+        device_tree.selection_remove(row)
+    else:
+        device_tree.selection_add(row)
+
+    device_tree.focus(row)
+    return "break"
+
+device_tree.bind("<Control-Button-1>", ctrl_click_select)
 root.bind("<Shift-F10>", show_context_menu)
 
 
-root.bind("<Return>", start_ping)
+def safe_start_ping(event=None):
+    if is_bulk_running:
+        return
+    if len(device_tree.selection()) > 1:
+        return
+    start_ping(event)
+
+root.bind("<Return>", safe_start_ping)
 root.bind("<Escape>", stop_ping)
 root.bind("<Left>", lambda e: move_focus_horizontal(-1))
 root.bind("<Right>", lambda e: move_focus_horizontal(1))
@@ -1671,9 +1788,12 @@ device_tree.tag_configure("DOWN", foreground="#c0392b")
 
 # CONTEXT MENU
 context_menu = tk.Menu(root, tearoff=0)
+context_menu.add_separator()
+context_menu.add_command(
+    label="🗑 Cihazı Sil",
+    command=delete_selected_device
+)
 context_menu.add_command(label="▶ Ping Başlat", command=start_ping_from_menu)
-context_menu.add_command(label="🧭 Traceroute", command=start_traceroute_selected)
-context_menu.add_command(label="🔌 Port Test (SSH/HTTP/HTTPS/RDP)", command=start_port_test_selected)
 context_menu.add_command(label="⏹ Ping Durdur", command=stop_ping)
 context_menu.add_separator()
 context_menu.add_command(
@@ -1699,7 +1819,6 @@ context_menu.add_command(
     command=clear_all_filters
 )
 
-# ---------------- START ----------------
 # ---------------- START ----------------
 load_config()
 
