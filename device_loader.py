@@ -1,8 +1,6 @@
 import json
 import os
 from openpyxl import load_workbook
-from openpyxl import load_workbook
-
 
 DEVICES_XLSX = "devices.xlsx"
 

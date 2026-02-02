@@ -53,6 +53,12 @@ COLUMN_WIDTHS = {
 current_sort_column = None
 current_sort_reverse = False
 
+def update_column_headers():
+    for col in cols:
+        text = col
+        if col == current_sort_column:
+            text += " ▼" if current_sort_reverse else " ▲"
+        device_tree.heading(col, text=text)
 devices = []
 current_ip = None
 is_running = False
@@ -154,6 +160,15 @@ def single_ping(ip, timeout=2):
     
 from concurrent.futures import ThreadPoolExecutor
 
+def bulk_ping_devices(devices_to_ping):
+    def ping_one(device):
+        ip = device["ip"]
+        ms = single_ping(ip)
+        ui_queue.put(("BULK", ip, ms))
+
+    # aynı anda EN FAZLA 10 ping
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        executor.map(ping_one, devices_to_ping)
 
 def ip_exists(ip, exclude_device=None):
     for d in devices:
@@ -231,6 +246,32 @@ def sort_devices_by_column(col, reverse=False):
 
 def ping_command(ip):
     return ["ping", "-t", ip] if IS_WINDOWS else ["ping", ip]
+
+def traceroute_command(ip):
+    # -d = DNS çözümleme kapalı (daha hızlı)
+    if IS_WINDOWS:
+        return ["tracert", "-d", ip]
+    else:
+        return ["traceroute", ip]
+
+
+def traceroute_worker(ip):
+    flags = subprocess.CREATE_NO_WINDOW if IS_WINDOWS else 0
+
+    proc = subprocess.Popen(
+        traceroute_command(ip),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        creationflags=flags
+    )
+
+    for line in proc.stdout:
+        # traceroute bitene kadar satır satır UI'ye gönder
+        ui_queue.put(("TRACE", ip, line))
+
+    ui_queue.put(("TRACE_DONE", ip, None))
+
 
 def ip_to_tuple(ip):
     try:
@@ -376,6 +417,22 @@ def process_ui_queue():
                     d["status"] = status_by_latency(ms)
                     update_tree_item_for_ip(ip)
                     break
+        
+                # 🧭 TRACEROUTE
+        elif item_type == "TRACE":
+            line = payload
+
+            output_box.config(state=tk.NORMAL)
+            output_box.insert(tk.END, line)
+            output_box.see(tk.END)
+            output_box.config(state=tk.DISABLED)
+
+        elif item_type == "TRACE_DONE":
+            output_box.config(state=tk.NORMAL)
+            output_box.insert(tk.END, "\n--- Traceroute tamamlandı ---\n")
+            output_box.see(tk.END)
+            output_box.config(state=tk.DISABLED)
+
 
           
 
@@ -428,6 +485,31 @@ def start_ping_from_menu():
     global started_from_entry
     started_from_entry = False
     start_ping()
+
+def start_traceroute_selected():
+    global started_from_entry
+
+    # seçili cihaz yoksa entry'den IP al
+    sel = device_tree.selection()
+    if sel:
+        ip = device_tree.item(sel[0])["values"][1]
+    else:
+        ip = ip_entry.get().strip()
+
+    if not ip:
+        messagebox.showwarning("Uyarı", "Traceroute için bir IP seçin veya girin.")
+        return
+
+    # output'u temizle
+    output_box.config(state=tk.NORMAL)
+    output_box.delete("1.0", tk.END)
+    output_box.config(state=tk.DISABLED)
+
+    # ping çalışıyorsa durdur (aynı anda karışmasın)
+    stop_ping()
+
+    # traceroute thread
+    threading.Thread(target=traceroute_worker, args=(ip,), daemon=True).start()
 
 def stop_ping(event=None):
     global is_running, ping_process
@@ -982,7 +1064,7 @@ def open_add_device_window():
 
         # ✅ 1️⃣ Excel'e yaz
         from device_loader import add_device_to_excel
-        add_device_to_excel(new_device, excel_path, excel_mapping)
+        add_device_to_excel(new_device, excel_path)
 
         # ✅ 2️⃣ Excel'den TEKRAR OKU (tek gerçek kaynak)
         refresh_from_excel()
@@ -1064,12 +1146,7 @@ def show_device_details():
         device["description"] = entries["Description"].get()
 
         from device_loader import update_device_in_excel
-        update_device_in_excel(
-            old_ip,
-            device,
-            excel_path,
-            excel_mapping
-        )
+        update_device_in_excel(old_ip, device)
 
         save_devices(devices)
         refresh_device_list(keep_selection=True)
@@ -1087,29 +1164,6 @@ def copy_selected_ip():
     ip = device_tree.item(sel[0])["values"][1]
     root.clipboard_clear()
     root.clipboard_append(ip)
-
-def delete_selected_device():
-    sel = device_tree.selection()
-    if not sel:
-        return
-
-    item = device_tree.item(sel[0])
-    ip = item["values"][1]
-
-    answer = messagebox.askyesno(
-        "Cihaz Sil",
-        f"{ip} adresli cihaz silinsin mi?\n\nBu işlem geri alınamaz."
-    )
-
-    if not answer:
-        return
-
-    # 1️⃣ Excel’den sil
-    from device_loader import delete_device_from_excel
-    delete_device_from_excel(ip, excel_path, excel_mapping)
-
-    # 2️⃣ Excel’den yeniden yükle
-    refresh_from_excel()
 
 
 def open_filter_window(field):
@@ -1328,40 +1382,6 @@ root.title("Ping Monitor")
 root.geometry("1100x650")
 root.minsize(1100, 650)
 
-# ---------------- BACKGROUND ----------------
-bg_photo = tk.PhotoImage(file="bg.png")
-
-bg_label = tk.Label(
-    root,
-    image=bg_photo,
-    bg="black"
-)
-
-bg_label.place(
-    x=0,
-    y=0,
-    relwidth=1,
-    relheight=1
-)
-
-bg_label.lower()
-
-bg_label = tk.Label(
-    root,
-    image=bg_photo,
-    bg="black"
-)
-
-bg_label.place(
-    x=0,
-    y=0,
-    relwidth=1,
-    relheight=1
-)
-
-# 🔴 ÇOK KRİTİK
-bg_label.lower()
-
 # 🔑 PLATFORM FONT STYLE (SADECE EKLENEN KISIM)
 style = ttk.Style(root)
 style.configure(
@@ -1514,18 +1534,6 @@ pagination.pack(fill=tk.X, pady=5)
 page_label = tk.Label(pagination, text="Sayfa 1 / 1")
 page_label.pack(side=tk.LEFT, padx=10)
 
-# ---------------- FOOTER / SIGNATURE ----------------
-footer = tk.Frame(right)
-footer.pack(fill=tk.X, side=tk.BOTTOM, padx=8, pady=4)
-
-signature_label = tk.Label(
-    footer,
-    text="Anur",
-    font=(FONT_NAME, 9),
-    fg="#7f8c8d"   # gri – göz yormaz
-)
-signature_label.pack(side=tk.RIGHT)
-
 def update_page_label():
     page_label.config(text=f"Sayfa {current_page} / {total_pages}")
 
@@ -1569,31 +1577,11 @@ device_tree.bind("<Button-5>", lambda e: device_tree.yview_scroll(1, "units"))  
 
 device_tree.bind("<Button-3>", show_context_menu)
 device_tree.bind("<Button-2>", show_context_menu)
-def ctrl_click_select(event):
-    row = device_tree.identify_row(event.y)
-    if not row:
-        return "break"
-
-    if row in device_tree.selection():
-        device_tree.selection_remove(row)
-    else:
-        device_tree.selection_add(row)
-
-    device_tree.focus(row)
-    return "break"
-
-device_tree.bind("<Control-Button-1>", ctrl_click_select)
+device_tree.bind("<Control-Button-1>", show_context_menu)
 root.bind("<Shift-F10>", show_context_menu)
 
 
-def safe_start_ping(event=None):
-    if is_bulk_running:
-        return
-    if len(device_tree.selection()) > 1:
-        return
-    start_ping(event)
-
-root.bind("<Return>", safe_start_ping)
+root.bind("<Return>", start_ping)
 root.bind("<Escape>", stop_ping)
 root.bind("<Left>", lambda e: move_focus_horizontal(-1))
 root.bind("<Right>", lambda e: move_focus_horizontal(1))
@@ -1608,12 +1596,8 @@ device_tree.tag_configure("DOWN", foreground="#c0392b")
 
 # CONTEXT MENU
 context_menu = tk.Menu(root, tearoff=0)
-context_menu.add_separator()
-context_menu.add_command(
-    label="🗑 Cihazı Sil",
-    command=delete_selected_device
-)
 context_menu.add_command(label="▶ Ping Başlat", command=start_ping_from_menu)
+context_menu.add_command(label="🧭 Traceroute", command=start_traceroute_selected)
 context_menu.add_command(label="⏹ Ping Durdur", command=stop_ping)
 context_menu.add_separator()
 context_menu.add_command(
@@ -1639,6 +1623,7 @@ context_menu.add_command(
     command=clear_all_filters
 )
 
+# ---------------- START ----------------
 # ---------------- START ----------------
 load_config()
 
