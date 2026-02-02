@@ -12,6 +12,8 @@ from device_loader import load_devices_from_excel, save_devices
 from tkinter import filedialog
 import json
 import os
+import socket
+
 
 
 
@@ -159,6 +161,34 @@ def single_ping(ip, timeout=2):
         return None
     
 from concurrent.futures import ThreadPoolExecutor
+
+COMMON_PORTS = [
+    (22, "SSH"),
+    (80, "HTTP"),
+    (443, "HTTPS"),
+    (3389, "RDP"),
+]
+
+def check_port(ip, port, timeout=1.0):
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except:
+        return False
+
+
+def port_test_worker(ip, ports=None):
+    if ports is None:
+        ports = COMMON_PORTS
+
+    ui_queue.put(("PORT_TEST_START", ip, None))
+
+    for port, name in ports:
+        ok = check_port(ip, port, timeout=1.0)
+        ui_queue.put(("PORT_TEST_RESULT", ip, (port, name, ok)))
+
+    ui_queue.put(("PORT_TEST_DONE", ip, None))
+
 
 def bulk_ping_devices(devices_to_ping):
     def ping_one(device):
@@ -433,6 +463,29 @@ def process_ui_queue():
             output_box.see(tk.END)
             output_box.config(state=tk.DISABLED)
 
+                # 🔌 PORT TEST
+        elif item_type == "PORT_TEST_START":
+            output_box.config(state=tk.NORMAL)
+            output_box.insert(tk.END, f"\n--- Port Test Başladı: {ip} ---\n")
+            output_box.see(tk.END)
+            output_box.config(state=tk.DISABLED)
+
+        elif item_type == "PORT_TEST_RESULT":
+            port, name, ok = payload
+            status_txt = "OPEN ✅" if ok else "CLOSED ❌"
+
+            output_box.config(state=tk.NORMAL)
+            output_box.insert(tk.END, f"{port:<5} ({name:<6}) -> {status_txt}\n")
+            output_box.see(tk.END)
+            output_box.config(state=tk.DISABLED)
+
+        elif item_type == "PORT_TEST_DONE":
+            output_box.config(state=tk.NORMAL)
+            output_box.insert(tk.END, f"--- Port Test Bitti: {ip} ---\n\n")
+            output_box.see(tk.END)
+            output_box.config(state=tk.DISABLED)
+
+
 
           
 
@@ -510,6 +563,28 @@ def start_traceroute_selected():
 
     # traceroute thread
     threading.Thread(target=traceroute_worker, args=(ip,), daemon=True).start()
+def start_port_test_selected():
+    # seçili cihaz varsa oradan al
+    sel = device_tree.selection()
+    if sel:
+        ip = device_tree.item(sel[0])["values"][1]
+    else:
+        ip = ip_entry.get().strip()
+
+    if not ip:
+        messagebox.showwarning("Uyarı", "Port testi için bir IP seçin veya girin.")
+        return
+
+    # output'u temizle
+    output_box.config(state=tk.NORMAL)
+    output_box.delete("1.0", tk.END)
+    output_box.config(state=tk.DISABLED)
+
+    # ping çalışıyorsa durdur
+    stop_ping()
+
+    threading.Thread(target=port_test_worker, args=(ip,), daemon=True).start()
+
 
 def stop_ping(event=None):
     global is_running, ping_process
@@ -1598,6 +1673,7 @@ device_tree.tag_configure("DOWN", foreground="#c0392b")
 context_menu = tk.Menu(root, tearoff=0)
 context_menu.add_command(label="▶ Ping Başlat", command=start_ping_from_menu)
 context_menu.add_command(label="🧭 Traceroute", command=start_traceroute_selected)
+context_menu.add_command(label="🔌 Port Test (SSH/HTTP/HTTPS/RDP)", command=start_port_test_selected)
 context_menu.add_command(label="⏹ Ping Durdur", command=stop_ping)
 context_menu.add_separator()
 context_menu.add_command(
